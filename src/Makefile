@@ -1,7 +1,25 @@
+#
+# © 2024. Triad National Security, LLC. All rights reserved.
+#
+# This program was produced under U.S. Government contract 89233218CNA000001
+# for Los Alamos National Laboratory (LANL), which is operated by
+# Triad National Security, LLC for the U.S. Department of Energy/National Nuclear
+# Security Administration. All rights in the program are reserved by
+# Triad National Security, LLC, and the U.S. Department of Energy/National
+# Nuclear Security Administration. The Government is granted for itself and
+# others acting on its behalf a nonexclusive, paid-up, irrevocable worldwide
+# license in this material to reproduce, prepare. derivative works,
+# distribute copies to the public, perform publicly and display publicly,
+# and to permit others to do so.
+#
+# Author:
+#    Kai Gao, kaigao@lanl.gov
+#
+
 
 # paths
-bindir = $(PWD)/../bin
-objdir = $(HOME)/bin/obj/geological_model
+bindir = $(PWD)/../lib
+objdir = $(PWD)/../obj
 moddir = $(PWD)/../lib
 
 # Dependencies
@@ -18,19 +36,14 @@ objlib = $(addprefix $(objdir)/, $(common))
 # targets
 lib = $(moddir)/librgm.a
 
-all: makedir \
-	$(lib)
+all: makedir $(lib)
 
 # options
-include $(HOME)/src/__libflit/src/Makefile.in
-inc = \
-	$(base_inc) \
-	-I$(HOME)/src/__libflit/lib \
-	-I$(HOME)/src/__geological_model/lib
-lflags = \
-	$(HOME)/src/__geological_model/lib/librgm.a \
-	$(HOME)/src/__libflit/lib/libflit.a \
-	$(base_lflags)
+flitdir = $(HOME)/src/libflit
+
+include $(flitdir)/src/Makefile.in
+inc = $(base_inc) -I$(flitdir)/lib
+lflags = $(flitdir)/lib/libflit.a $(base_lflags)
 fflags = $(base_fflags) \
 	#	-O0 -g -check bounds
 
@@ -50,5 +63,4 @@ makedir:
 
 # clean
 clean:
-	-@rm -rf $(objdir)/*.o $(moddir)/*.mod \
-		$(lib)
+	-@rm -rf $(objdir)/*.o $(moddir)/*.mod $(lib)
