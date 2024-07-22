@@ -754,7 +754,6 @@ contains
         end if
 
         ! Output
-        !        this%image = this%image(ne1 + 1:ne1 + this%n1, ne2 + 1:ne2 + this%n2)
         this%image = this%image(1:this%n1, 1:this%n2)
 
         if (this%yn_fault) then

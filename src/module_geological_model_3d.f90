@@ -648,7 +648,7 @@ contains
                     x3 = random(this%nstem + 1, seed=this%seed*17*isalt)
                     x4 = random(this%nstem + 1, seed=this%seed*18*isalt)
 
-                    nd = nint((1.0 - rand(range=this%salt_top_max, seed=this%seed*14*isalt - 1))*this%n1) ! + ne1)
+                    nd = nint((1.0 - rand(range=this%salt_top_max, seed=this%seed*14*isalt - 1))*this%n1)
 
                     x1 = ginterp([0.0, rand(range=[0.05*nd, 0.15*nd], seed=this%seed*19*isalt - 1), &
                         sort(random(this%nstem - 2, range=[0.2*nd, nd - 0.1*nd], seed=this%seed*19*isalt)), nd - 1.0], &
@@ -869,7 +869,6 @@ contains
         end if
 
         ! Add random noise
-        !        this%image = this%image/maxval(abs(this%image))
         if (this%noise_level /= 0 .and. (.not. this%yn_conv_noise)) then
             select case (this%noise_type)
 

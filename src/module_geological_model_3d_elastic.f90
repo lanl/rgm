@@ -420,7 +420,6 @@ contains
         end if
 
         ! Spatially variant layer thickness
-        !        call assert(this%lwv >= 0, ' <generate_3d_geological_model> Error: lwv must >= 0 ')
         layer_thick = rescale(r, [1.0, 1.0 + abs(this%lwv)])
 
         ! Create non-fault image and RGT
@@ -719,7 +718,6 @@ contains
         end if
 
         ! Add random noise
-        !        this%image = this%image/maxval(abs(this%image))
         if (this%noise_level /= 0 .and. (.not. this%yn_conv_noise)) then
             select case (this%noise_type)
 

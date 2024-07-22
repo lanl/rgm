@@ -279,7 +279,6 @@ contains
 
         rc = zeros(nl)
         rc = [rc1, rc2]
-        !        rc = rc - mean(rc)
         rc = rc(random_order(nl, seed=this%seed*10))
 
         refl = zeros(n1)
@@ -538,7 +537,6 @@ contains
             end do
         end if
 
-        !        ! Output
         this%image_pp = w_pp(ne1 + 1:ne1 + this%n1 + 2, ne2 + 1:ne2 + this%n2 + 2)
         this%image_ps = w_ps(ne1 + 1:ne1 + this%n1 + 2, ne2 + 1:ne2 + this%n2 + 2)
         this%image_sp = w_sp(ne1 + 1:ne1 + this%n1 + 2, ne2 + 1:ne2 + this%n2 + 2)
@@ -603,7 +601,6 @@ contains
         end if
 
         ! Add random noise
-        !        this%image = this%image/maxval(abs(this%image))
         if (this%noise_level /= 0 .and. (.not. this%yn_conv_noise)) then
             select case (this%noise_type)
 
@@ -645,7 +642,6 @@ contains
 
         if (this%yn_fault) then
             this%fault = f(ne1 + 1:ne1 + this%n1, ne2 + 1:ne2 + this%n2)
-            !            deallocate (f, ff)
             ! Fault attributes
             this%fault_dip = this%fault
             this%fault_disp = this%fault
@@ -826,7 +822,6 @@ contains
             this%rgt = zeros(this%n1, this%n2)
         end if
         if (this%yn_facies) then
-            !            this%facies = zeros(this%n1, this%n2)
             this%vp = zeros(this%n1, this%n2)
             this%vs = zeros(this%n1, this%n2)
         end if
