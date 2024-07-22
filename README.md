@@ -1,7 +1,7 @@
 # Description
 **RGM: Random Geological Model Generation package**
 
-![Example random geological models](./example/rgm.png =512x)
+![Example random geological models](github.com/lanl/rgm/example/rgm.png =512x)
 
 We develop a Fortran package for generating realistic random geological models, including seismic images, faults, relative geological time, and salt bodies. 
 
