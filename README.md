@@ -3,7 +3,7 @@
 
 ![Example random geological models](example/rgm.png)
 
-We develop a Fortran package for generating realistic random geological models, including seismic images, faults, relative geological time, and salt bodies. 
+We develop a Fortran package for generating realistic random geological models, including seismic images, faults, relative geological time (seismic horizons), and salt bodies, via a multi-randomization method. The generated models can be used to train machine learning models, e.g., [MTI-MTR](https://github.com/lanl/mtl).
 
 The work was supported by Los Alamos National Laboratory (LANL) Laboratory Directory Research and Development (LDRD) project 20240322ER. LANL is operated by Triad National Security, LLC, for the National Nuclear Security Administration (NNSA) of the U.S. Department of Energy (DOE) under Contract No. 89233218CNA000001. The research used high-performance computing resources provided by LANL's Institutional Computing program. 
 
@@ -13,21 +13,19 @@ The work is under LANL open source approval reference O4778.
 A manuscript associated with the code is under preparation and will be released pending separate approval.  
 
 # Requirement
-`RGM` relies on [FLIT](github.com/lanl/flit). You need to install `FLIT` first. 
+`RGM` depends on [FLIT](https://github.com/lanl/flit).
 
 # Use
-The code is written in Fortran. 
-
-To install `RGM`, 
+The code is written in Fortran. To install `RGM`, 
 
 ```
 cd src
 make
 ```
 
-The compiled library file (with a name `librgm.a`) and module files will be at [lib](lib). 
+The compiled library file (with a name `librgm.a`) and module files will be at the directory [lib](lib). 
 
-We include several simple examples to use `RGM` in `example`. To try these examples,
+We include several simple examples to use `RGM` in [example](example). To try these examples,
 
 ```
 cd example
@@ -36,7 +34,7 @@ make
 
 The compiled executables will be at [example/bin](example/bin). Running these executables will generate images/faults/salt bodies in the directory. All the generated files will be in little-endian single-precision raw binary format, with dimensions specificed in the respective codes. 
 
-The [Makefile](example/Makefile) in the [example](example) directory can serve as an example on how to use `RGM` in your code, including path inclusion and link of the compiled library. 
+The [Makefile](example/Makefile) in the [example](example) directory can serve as an example on how to use `RGM` in your code, including path inclusion and link of the compiled library/modules. 
 
 # License
 &copy; 2024. Triad National Security, LLC. All rights reserved. 
@@ -60,4 +58,4 @@ We welcome feedbacks, bug reports, and improvement ideas on `RGM`.
 
 If you use this package in your research and find it useful, please cite it as
 
-* Kai Gao, Ting Chen, 2024, RGM:  Random Geological Model Generation package, url: [github.com/lanl/rgm](github.com/lanl/rgm)
+* Kai Gao, Ting Chen, 2024, RGM:  Random Geological Model Generation package, url: [github.com/lanl/rgm](https://github.com/lanl/rgm)
