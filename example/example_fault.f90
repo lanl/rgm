@@ -20,7 +20,7 @@
 program test
 
     use libflit
-    use rgm
+    use librgm
 
     block
 
