@@ -26,6 +26,8 @@ module geological_model_2d_elastic
 
     ! 2D random geological model -- elastic
     type rgm2_elastic
+        !> Meanings of the parameters are same with those in the
+        !> acoustic case
         integer :: n1 = 128
         integer :: n2 = 128
         integer :: nf = 4
@@ -56,7 +58,9 @@ module geological_model_2d_elastic
         logical :: yn_rgt = .false.
         logical :: yn_facies = .false.
         logical :: yn_fault = .true.
+        !> Arrays for holding the generated PP, PS, SP, and SS images
         real, allocatable, dimension(:, :) :: image_pp, image_ps, image_sp, image_ss
+        !> Arrays for holding the generated Vp and Vs models
         real, allocatable, dimension(:, :) :: vp, vs
         real, allocatable, dimension(:, :) :: rgt, facies, fault, fault_dip, fault_disp
         real, dimension(1:2) :: psf_sigma = [5.0, 2.5]
@@ -669,7 +673,7 @@ contains
             this%vs = ms(ne1 + 1:ne1 + this%n1, ne2 + 1:ne2 + this%n2)
         end if
 
-        if (this%unconf_nl == 0) then
+        if (this%unconf > 0 .and. this%unconf_nl == 0) then
             this%image_pp = 0
             this%image_ps = 0
             this%image_sp = 0

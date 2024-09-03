@@ -17,7 +17,7 @@
 !
 
 
-module rgm
+module librgm
 
     use geological_model_2d
     use geological_model_2d_elastic
@@ -25,4 +25,4 @@ module rgm
     use geological_model_3d_elastic
     use geological_model_utility
 
-end module rgm
+end module librgm

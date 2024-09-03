@@ -26,61 +26,134 @@ module geological_model_2d
 
     ! 2D random geological model -- acoustic
     type rgm2
+        !> Number of grid points along x1
         integer :: n1 = 128
+        !> Number of grid points along x2
         integer :: n2 = 128
+        !> Number of faults
         integer :: nf = 4
+        !> Number of reflectors
         integer :: nl = 20
+        !> Random seed
         integer :: seed = -1
+        !> sigma (in terms of grid number) of Gaussian filter for smoothing reflectors along x2
         real :: refl_smooth = 20.0
+        !> Linear slope (in terms of grid number) added to reflectors
         real :: refl_slope = 0.0
+        !> Center frequency of source wavelet for convolving reflectors
         real :: f0 = 150.0
+        !> Fracture width (in terms of grid number)
         real :: fwidth = 2.0
+        !> Range of fault dip angles and displacements
         real, allocatable, dimension(:) :: dip, disp
+        !> sigmas of Gaussian filter for smoothing the generated noise
         real, dimension(1:2) :: noise_smooth = [1.0, 1.0]
+        !> Level of noise in terms of max(abs(noise))/max(abs(image))
         real :: noise_level = 0.25
+        !> sigmas of Gaussian filter for smoothing the generated image
         real, dimension(1:2) :: image_smooth = [0.0, 0.0]
+        !> Source wavelet for reflector convolution, can be one of
+        !> ricker, ricker_deriv, gaussian, gaussian_deriv, sinc, delta
         character(len=24) :: wave = 'ricker'
+        !> Shape of reflectors, can be one of
+        !> random, gaussian, custom
+        !> When = custom, must specifiy the array refl
         character(len=24) :: refl_shape = 'random'
+        !> Number of Gaussians for refl_shape = gaussian
         integer :: ng = 2
+        !> Range of reflector's heights
         real, dimension(1:2) :: refl_height = [0.0, 10.0]
+        !> Range of reflector's amplitude (or approximately reflection coefficients)
         real, dimension(1:2) :: refl_amp = [0.5, 1.0]
+        !> Range of Gaussian standard devision for refl_shape = gaussian
         real, dimension(1:2) :: refl_sigma2 = [0.0, 0.0]
+        !> Range of Gaussian mean for refl_shape = gaussian
         real, dimension(1:2) :: refl_mu2 = [0.0, 0.0]
+        !> Array for holding the custom reflector shape
         real, allocatable, dimension(:) :: refl
         real :: lwv = 0.0
+        !> Number of unconformity interfaces
         integer :: unconf = 0
+        !> Range of depth of unconformity interfaces in terms of fraction of the entire depth,
+        !> which must fall in [0, 1]; smaller values represent shallower unconformity interfaces
         real, dimension(1:2) :: unconf_z = [0.0, 0.5]
+        !> Range of height of unconformity interfaces in depth, measured in terms of fraction of the entire depth,
+        !> which must fall in [0, 1]; smaller values represent flatter unconformity interfaces
         real, dimension(1:2) :: unconf_amp = [0.05, 0.15]
+        !> Number of reflectors above the unconformity interfaces; when
+        !> = 1 the region above the unconformity represents water
         integer :: unconf_nl = 99999
         real :: lwmin = 0.5
+        !> Whether or not to compute relative geological time
+        !> if = .true., the array rgt will be filled with computed RGT
         logical :: yn_rgt = .false.
+        !> Whether or not to compute facies (or piecewise constant random perturbations)
+        !> if = .true., the array facies will be filled with computed facies
         logical :: yn_facies = .false.
+        !> Whether or not to output faults
+        !> if = .true., the array fault will be filled with 1, 2, 3, ..., nf, indicating
+        !> the numbered faults within the model; if only fault probability is needed, then
+        !> clip(fault, 0, 1) will do the work. Meanwhile, fault_dip and fault_disp will be
+        !> filled with the dip angles and displacements associated with the faults.
+        !> Note that this value does not affect the insertion of faults into the model set by nf, ...
+        !> i.e., if = .false., then it will not fill the fault arrays, but the model will still be
+        !> a faulted model.
         logical :: yn_fault = .true.
+        !> Arrays for holding results
         real, allocatable, dimension(:, :) :: image, rgt, facies, fault, fault_dip, fault_disp
+        !> sigmas of Gaussians for tapering the source wavelet the vertical and horizontal directions
         real, dimension(1:2) :: psf_sigma = [5.0, 2.5]
+        !> Array for holding a custom point spread function
         real, allocatable, dimension(:, :) :: psf
+        !> Whether or not to set a custom point spread function
+        !> If yes then psf must be given with a dimension of (n1, n2)
         logical :: custom_psf = .false.
+        !> Threshold for setting the reflection coefficient associated with a facies to zero
         real :: facies_threshold = 0.0
+        !> Statistical distribution of random reflection coefficients, can be one of
+        !> normal, uniform
         character(len=12) :: refl_amp_dist = 'normal'
+        !> Type of random noise, can be normal, uniform, or exp
         character(len=12) :: noise_type = 'normal'
+        !> Convolve the psf with noise as well in addition to reflector image
+        !> If = .false., then noise will be added after reflector-psf convolution
         logical :: yn_conv_noise = .true.
+        !> Max height of secondary random fluctuations added to reflectors in terms of max height of base reflectors
         real :: secondary_refl_amp = 0.0
+        !> Set faults to be with (quasi) regular spacing and dips
         logical :: yn_regular_fault = .false.
+        !> Source wavelet filtering frequencies and coefficients, e.g.,
+        !> amps = [0, 1, 1, 0] and freqs = [0, 10, 30, 40]
+        !> is a band-pass filtering of 0, 10, 30, 40 Hz.
         real, allocatable, dimension(:) :: wave_filt_freqs, wave_filt_amps
+        !> Whether or not to insert salt bodies into the model
         logical :: yn_salt = .false.
+        !> Number of salt bodies
         integer :: nsalt = 1
+        !> Number of random control points for creating the vertical shape of salt bodies
         integer :: nstem = 5
+        !> Range of max horizontal radius of salt bodies in terms of fraction of n2
         real, dimension(1:2) :: salt_max_radius = [0.05, 0.15]
+        !> Range of max depth of salt body top interfaces in terms of fraction of n1
         real, dimension(1:2) :: salt_top_max = [0.2, 0.4]
+        !> sigma of Gaussian filter for smoothing the top of salt body
         real :: salt_top_smooth = 10.0
+        !> Reserved parameter not in use at this momoment
         character(len=24) :: salt_type = 'dome'
+        !> Min value for scaling the facies
         real :: vmin = 2000.0
+        !> Max value for scaling the facies; after scaling, the facies will fall in [vmin, vmax]
         real :: vmax = 4000.0
         real :: perturb_max = 0.2
+        !> Salt body velocity
         real :: salt_vel = 5000.0
+        !> Array for holding the salt bodies
         real, allocatable, dimension(:, :) :: salt
+        !> Max height of the random salt body top
         real :: salt_top_amp = 20.0
+        !> Level of random noise added to salt image in terms of max(abs(noise))/max(abs(salt))
         real :: salt_noise = 0.0
+        !> Max amplitude of salt body image in terms of max(abs(salt))/max(abs(image))
         real :: salt_amp = 2.0
 
     contains
@@ -529,6 +602,7 @@ contains
         n1 = size(this%image, 1)
         n2 = size(this%image, 2)
 
+        ! Add salt
         if (this%yn_salt) then
             block
 
@@ -808,7 +882,7 @@ contains
             !$omp end parallel do
         end if
 
-        if (this%unconf_nl == 0) then
+        if (this%unconf > 0 .and. this%unconf_nl == 0) then
             this%image = 0
             if (this%yn_rgt) then
                 this%rgt = 0

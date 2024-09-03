@@ -26,6 +26,8 @@ module geological_model_3d_elastic
 
     ! 3D random geological model -- elastic
     type rgm3_elastic
+        !> Meanings of the parameters are same with those in the
+        !> 2D case and the acoustic case
         integer :: n1 = 128
         integer :: n2 = 128
         integer :: n3 = 128
@@ -792,7 +794,7 @@ contains
             this%vs = ms(ne1 + 1:ne1 + this%n1, ne2 + 1:ne2 + this%n2, ne3 + 1:ne3 + this%n3)
         end if
 
-        if (this%unconf_nl == 0) then
+        if (this%unconf > 0 .and. this%unconf_nl == 0) then
             this%image_pp = 0
             this%image_ps = 0
             this%image_sp = 0
@@ -803,6 +805,8 @@ contains
             if (this%yn_fault) then
                 this%fault = 0
                 this%fault_dip = 0
+                this%fault_strike = 0
+                this%fault_rake = 0
                 this%fault_disp = 0
             end if
             if (this%yn_facies) then

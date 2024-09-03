@@ -26,6 +26,8 @@ module geological_model_3d
 
     ! 3D random geological model -- acoustic
     type rgm3
+        !> Meanings of the parameters are same with those in the
+        !> 2D case
         integer :: n1 = 128
         integer :: n2 = 128
         integer :: n3 = 128
@@ -45,9 +47,13 @@ module geological_model_3d
         integer :: ng = 2
         real, dimension(1:2) :: refl_amp = [0.5, 1.0]
         real, dimension(1:2) :: refl_height = [0.0, 10.0]
+        !> Range of Gaussian standard devision along x2 for refl_shape = gaussian
         real, dimension(1:2) :: refl_sigma2 = [0.0, 0.0]
+        !> Range of Gaussian mean along x2 for refl_shape = gaussian
         real, dimension(1:2) :: refl_mu2 = [0.0, 0.0]
+        !> Range of Gaussian standard devision along x3 for refl_shape = gaussian
         real, dimension(1:2) :: refl_sigma3 = [0.0, 0.0]
+        !> Range of Gaussian mean along x3 for refl_shape = gaussian
         real, dimension(1:2) :: refl_mu3 = [0.0, 0.0]
         real, allocatable, dimension(:, :) :: refl
         real :: lwv = 0.0
@@ -605,7 +611,7 @@ contains
         n2 = size(this%image, 2)
         n3 = size(this%image, 3)
 
-        ! r 15
+        ! Add salt
         if (this%yn_salt) then
             block
 
@@ -728,7 +734,6 @@ contains
         end if
 
         ! Add random noise
-        !        this%image = this%image/maxval(abs(this%image))
         if (this%noise_level /= 0 .and. this%yn_conv_noise) then
             select case (this%noise_type)
 
@@ -948,7 +953,7 @@ contains
             !$omp end parallel do
         end if
 
-        if (this%unconf_nl == 0) then
+        if (this%unconf > 0 .and. this%unconf_nl == 0) then
             this%image = 0
             if (this%yn_rgt) then
                 this%rgt = 0
@@ -956,6 +961,8 @@ contains
             if (this%yn_fault) then
                 this%fault = 0
                 this%fault_dip = 0
+                this%fault_strike = 0
+                this%fault_rake = 0
                 this%fault_disp = 0
             end if
             if (this%yn_facies) then
