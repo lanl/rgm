@@ -38,6 +38,58 @@ module geological_model_utility
         module procedure :: random_mask_smooth_3d
     end interface
 
+    type fractal_noise_1d
+        integer :: n1
+        integer :: res1 = 5
+        integer :: seed = -1
+        integer :: octaves = 5
+        real :: persistence = 0.5
+        real :: lacunarity = 2.0
+    contains
+        procedure, public :: generate => generate_fractal_noise_1d
+    end type
+
+    type fractal_noise_2d
+        integer :: n1, n2
+        integer :: res1 = 5
+        integer :: res2 = 5
+        integer :: seed = -1
+        integer :: octaves = 5
+        real :: persistence = 0.5
+        real :: lacunarity = 2.0
+    contains
+        procedure, public :: generate => generate_fractal_noise_2d
+    end type
+
+    type fractal_noise_3d
+        integer :: n1, n2, n3
+        integer :: res1 = 5
+        integer :: res2 = 5
+        integer :: res3 = 5
+        integer :: seed = -1
+        integer :: octaves = 5
+        real :: persistence = 0.5
+        real :: lacunarity = 2.0
+    contains
+        procedure, public :: generate => generate_fractal_noise_3d
+    end type
+
+    private
+    public :: sinc_wavelet
+    public :: gaussian_wavelet
+    public :: gaussian_deriv_wavelet
+    public :: gaussian_wavelet_hdur
+    public :: ricker_wavelet
+    public :: ricker_deriv_wavelet
+    public :: ormsby_wavelet
+    public :: noise_random_mix
+    public :: noise_wavenumber
+    public :: fractal_noise_1d
+    public :: fractal_noise_2d
+    public :: fractal_noise_3d
+    public :: elastic_reflection_coefs
+    public :: random_mask_smooth
+
 contains
 
     function sinc_wavelet(t, f0) result(wavelet)
@@ -410,5 +462,462 @@ contains
         r = binarize(r, bv, [0.0, 1.0])
 
     end function random_mask_smooth_3d
+
+    !
+    ! Fade function (cubic polynomial for smooth interpolation)
+    !
+    pure function fade(t) result(f)
+
+        real, intent(in) :: t
+        real :: f
+
+        f = 6.0*t**5 - 15.0*t**4 + 10.0*t**3
+
+    end function fade
+
+    !
+    ! Compute 1D gradient dot product
+    !
+    function gradient_1d(perm, x0, x) result(dot)
+
+        integer, intent(in), dimension(:) :: perm
+        integer, intent(in) :: x0
+        real, intent(in) :: x
+        real :: dot
+        integer :: h
+        real :: gradient
+
+        ! Compute hash value from permutation table
+        h = perm(mod(x0, 256))
+
+        ! Select gradient based on hash (either +1 or -1)
+        if (mod(h, 2) == 0) then
+            gradient = 1.0
+        else
+            gradient = -1.0
+        end if
+
+        ! Compute dot product: gradient * relative position
+        dot = gradient*(x - x0)
+
+    end function gradient_1d
+
+    !
+    ! Generate 1D Perlin noise
+    !
+    function perlin_1d(res, nx, seed) result(noise)
+
+        real, intent(in) :: res
+        integer, intent(in) :: nx, seed
+        real, allocatable, dimension(:) :: noise
+        real, allocatable, dimension(:) :: x
+        integer :: perm(0:255), x0, x1, i
+        real :: sx, n0, n1
+
+        ! Allocate noise array and coordinate array
+        allocate (noise(nx))
+        allocate (x(nx))
+
+        ! Generate coordinates scaled by res
+        x = [(i/real(nx - 1), i=0, nx - 1)]*res
+
+        ! Initialize permutation table
+        perm = random_permute(regspace(0, 1, 255), seed=seed)
+
+        ! Compute Perlin noise
+        !$omp parallel do private(i, x0, x1, sx, n0, n1)
+        do i = 1, nx
+
+            x0 = floor(x(i))
+            x1 = x0 + 1
+
+            sx = fade(x(i) - x0)
+
+            ! Compute gradients and dot products at the two corners
+            n0 = gradient_1d(perm, x0, x(i))
+            n1 = gradient_1d(perm, x1, x(i))
+
+            ! Interpolate between the two values
+            noise(i) = (1.0 - sx)*n0 + sx*n1
+
+        end do
+        !$omp end parallel do
+
+    end function perlin_1d
+
+    !
+    ! Generate 1D fractal noise based on Perlin noise
+    !
+    function generate_fractal_noise_1d(this) result(fractal_noise)
+
+        class(fractal_noise_1d), intent(in) :: this
+
+        integer :: n1, res, seed, octaves
+        real :: persistence, lacunarity
+        real, allocatable, dimension(:) :: fractal_noise
+        real, allocatable, dimension(:) :: noise
+        real :: amplitude, frequency
+        integer :: octave, nx, grid_check
+
+        n1 = this%n1
+        res = this%res1
+        seed = this%seed*20
+        octaves = this%octaves
+        persistence = this%persistence
+        lacunarity = this%lacunarity
+
+        grid_check = floor(lacunarity**(octaves - 1)*res)
+        nx = ceiling(n1*1.0/grid_check)*grid_check
+
+        ! Allocate fractal noise array
+        fractal_noise = zeros(nx)
+
+        ! Start with base frequency and amplitude
+        frequency = 1.0
+        amplitude = 1.0
+
+        ! Loop over octaves
+        do octave = 1, octaves
+
+            ! Generate Perlin noise for the current octave
+            noise = perlin_1d(res*frequency, nx, seed + octave)
+
+            ! Add the current octave to the fractal noise
+            fractal_noise = fractal_noise + amplitude*noise
+
+            ! Update amplitude and frequency for the next octave
+            amplitude = amplitude*persistence
+            frequency = frequency*lacunarity
+
+        end do
+
+        ! Normalize fractal noise to [0, 1]
+        fractal_noise = fractal_noise(1:n1)
+        fractal_noise = (fractal_noise - mean(fractal_noise))/std(fractal_noise)
+
+    end function generate_fractal_noise_1d
+
+    !
+    ! Compute 2D gradient dot product
+    !
+    pure function gradient_2d(hash, x, y) result(dot)
+
+        integer, intent(in) :: hash
+        real, intent(in) :: x, y
+        real :: dot
+        real, dimension(4, 2) :: gradients
+        integer :: h
+
+        ! Gradients for Perlin noise (limited set of vectors)
+        gradients = reshape([ &
+            0.0, 1.0, &
+            0.0, -1.0, &
+            1.0, 0.0, &
+            -1.0, 0.0], [4, 2])
+
+        ! Ensure index is between 1 and 4
+        h = mod(hash, 4) + 1
+
+        ! Dot product of gradient vector with relative position
+        dot = gradients(h, 1)*x + gradients(h, 2)*y
+
+    end function gradient_2d
+
+    !
+    ! Generate 2D Perlin noise
+    !
+    function perlin_2d(res_x, res_y, nx, ny, seed) result(noise)
+
+        real, intent(in) :: res_x, res_y
+        integer, intent(in) :: nx, ny, seed
+        real, allocatable, dimension(:, :) :: noise
+        integer :: x0, x1, y0, y1, i, j
+        real :: sx, sy, u, v, n0, n1
+        real, allocatable, dimension(:) :: x, y
+        integer, allocatable, dimension(:, :) :: permutation_table
+        integer, allocatable, dimension(:) :: perm
+
+        ! Allocate noise array and coordinate arrays
+        allocate (noise(nx, ny))
+        allocate (x(nx))
+        allocate (y(ny))
+
+        ! Generate coordinates scaled by res
+        x = [(i/real(nx - 1), i=0, nx - 1)]*res_x
+        y = [(j/real(ny - 1), j=0, ny - 1)]*res_y
+
+        ! Initialize permutation table
+        perm = random_permute(regspace(0, 1, 255), seed=seed)
+
+        allocate (permutation_table(0:255, 0:255))
+        do i = 0, 255
+            do j = 0, 255
+                permutation_table(i, j) = mod(perm(mod(i + perm(j), 256)), 4)
+            end do
+        end do
+
+        ! Compute Perlin noise
+        !$omp parallel do private(i, j, x0, x1, y0, y1, sx, sy, n0, n1, u, v)
+        do j = 1, ny
+            do i = 1, nx
+
+                x0 = floor(x(i))
+                x1 = x0 + 1
+                y0 = floor(y(j))
+                y1 = y0 + 1
+
+                sx = fade(x(i) - x0)
+                sy = fade(y(j) - y0)
+
+                n0 = gradient_2d(permutation_table(mod(x0, 256), mod(y0, 256)), x(i) - x0, y(j) - y0)
+                n1 = gradient_2d(permutation_table(mod(x1, 256), mod(y0, 256)), x(i) - x1, y(j) - y0)
+                u = (1.0 - sx)*n0 + sx*n1
+
+                n0 = gradient_2d(permutation_table(mod(x0, 256), mod(y1, 256)), x(i) - x0, y(j) - y1)
+                n1 = gradient_2d(permutation_table(mod(x1, 256), mod(y1, 256)), x(i) - x1, y(j) - y1)
+                v = (1.0 - sx)*n0 + sx*n1
+
+                noise(i, j) = (1.0 - sy)*u + sy*v
+
+            end do
+        end do
+        !$omp end parallel do
+
+    end function perlin_2d
+
+    !
+    ! Generate 2D fractal noise based on Perlin noise
+    !
+    function generate_fractal_noise_2d(this) result(fractal_noise)
+
+        class(fractal_noise_2d), intent(in) :: this
+
+        integer :: n1, n2, res_x, res_y, seed, octaves
+        real :: persistence, lacunarity
+        real, allocatable, dimension(:, :) :: fractal_noise
+        real, allocatable, dimension(:, :) :: noise
+        real :: amplitude, frequency
+        integer :: octave
+        integer :: grid_check, nx, ny
+
+        n1 = this%n1
+        n2 = this%n2
+        res_x = this%res1
+        res_y = this%res2
+        seed = this%seed*20
+        octaves = this%octaves
+        persistence = this%persistence
+        lacunarity = this%lacunarity
+
+        grid_check = floor(lacunarity**(octaves - 1)*res_x)
+        nx = ceiling(n1*1.0/grid_check)*grid_check
+
+        grid_check = floor(lacunarity**(octaves - 1)*res_y)
+        ny = ceiling(n2*1.0/grid_check)*grid_check
+
+        ! Initialize the fractal noise array
+        fractal_noise = zeros(nx, ny)
+
+        ! Start with base frequency and amplitude
+        frequency = 1.0
+        amplitude = 1.0
+
+        ! Loop over octaves
+        do octave = 1, octaves
+
+            ! Generate Perlin noise for the current octave
+            noise = perlin_2d(res_x*frequency, res_y*frequency, nx, ny, seed + octave)
+
+            ! Add the current octave to the fractal noise
+            fractal_noise = fractal_noise + amplitude*noise
+
+            ! Update amplitude and frequency for the next octave
+            amplitude = amplitude*persistence
+            frequency = frequency*lacunarity
+
+        end do
+
+        ! Normalize fractal noise to [0, 1]
+        fractal_noise = fractal_noise(1:n1, 1:n2)
+        fractal_noise = (fractal_noise - mean(fractal_noise))/std(fractal_noise)
+
+    end function generate_fractal_noise_2d
+
+    !
+    ! Compute 3D gradient dot product
+    !
+    pure function gradient_3d(perm, gradients, x0, y0, z0, x, y, z) result(dot)
+
+        integer, intent(in), dimension(:) :: perm
+        real, intent(in), dimension(:, :) :: gradients
+        integer, intent(in) :: x0, y0, z0
+        real, intent(in) :: x, y, z
+        real :: dot
+        integer :: h
+
+        ! Compute hash value from permutation table
+        h = perm(mod(x0 + perm(mod(y0 + perm(mod(z0, 256)), 256)), 256))
+        h = mod(h, 12) + 1
+
+        ! Dot product of gradient vector with relative position
+        dot = gradients(h, 1)*(x - x0) + gradients(h, 2)*(y - y0) + gradients(h, 3)*(z - z0)
+
+    end function gradient_3d
+
+    !
+    ! Generate 3D Perlin noise
+    !
+    function perlin_3d(res_x, res_y, res_z, nx, ny, nz, seed) result(noise)
+
+        real, intent(in) :: res_x, res_y, res_z
+        integer, intent(in) :: nx, ny, nz, seed
+        real, allocatable, dimension(:, :, :) :: noise
+        integer :: x0, x1, y0, y1, z0, z1, i, j, k
+        real :: sx, sy, sz, n000, n100, n010, n110, n001, n101, n011, n111
+        real :: nx00, nx10, nx01, nx11, nxy0, nxy1
+        real, allocatable, dimension(:) :: x, y, z
+        integer, allocatable, dimension(:) :: perm
+        real, dimension(12, 3) :: gradients
+
+        ! Gradients for Perlin noise (12 predefined unit vectors in 3D)
+        gradients = reshape([ &
+            1.0, 1.0, 0.0, &
+            -1.0, 1.0, 0.0, &
+            1.0, -1.0, 0.0, &
+            -1.0, -1.0, 0.0, &
+            1.0, 0.0, 1.0, &
+            -1.0, 0.0, 1.0, &
+            1.0, 0.0, -1.0, &
+            -1.0, 0.0, -1.0, &
+            0.0, 1.0, 1.0, &
+            0.0, -1.0, 1.0, &
+            0.0, 1.0, -1.0, &
+            0.0, -1.0, -1.0], [12, 3])
+
+        ! Allocate noise array and coordinate arrays
+        allocate (noise(nx, ny, nz))
+        allocate (x(nx))
+        allocate (y(ny))
+        allocate (z(nz))
+        allocate (perm(0:255))
+
+        ! Initialize coordinates scaled by res
+        x = [(i/real(nx - 1), i=0, nx - 1)]*res_x
+        y = [(j/real(ny - 1), j=0, ny - 1)]*res_y
+        z = [(k/real(nz - 1), k=0, nz - 1)]*res_z
+
+        ! Initialize permutation table
+        perm = random_permute(regspace(0, 1, 255), seed=seed)
+
+        ! Compute Perlin noise
+        !$omp parallel do private(i, j, k, x0, x1, y0, y1, z0, z1, sx, sy, sz, &
+            !$omp & n000, n100, n010, n110, n001, n101, n011, n111, nx00, nx10, nx01, nx11, nxy0, nxy1)
+        do k = 1, nz
+            do j = 1, ny
+                do i = 1, nx
+
+                    x0 = floor(x(i))
+                    x1 = x0 + 1
+                    y0 = floor(y(j))
+                    y1 = y0 + 1
+                    z0 = floor(z(k))
+                    z1 = z0 + 1
+
+                    sx = fade(x(i) - x0)
+                    sy = fade(y(j) - y0)
+                    sz = fade(z(k) - z0)
+
+                    ! Compute gradients and dot products at the 8 cube corners
+                    n000 = gradient_3d(perm, gradients, x0, y0, z0, x(i), y(j), z(k))
+                    n100 = gradient_3d(perm, gradients, x1, y0, z0, x(i), y(j), z(k))
+                    n010 = gradient_3d(perm, gradients, x0, y1, z0, x(i), y(j), z(k))
+                    n110 = gradient_3d(perm, gradients, x1, y1, z0, x(i), y(j), z(k))
+                    n001 = gradient_3d(perm, gradients, x0, y0, z1, x(i), y(j), z(k))
+                    n101 = gradient_3d(perm, gradients, x1, y0, z1, x(i), y(j), z(k))
+                    n011 = gradient_3d(perm, gradients, x0, y1, z1, x(i), y(j), z(k))
+                    n111 = gradient_3d(perm, gradients, x1, y1, z1, x(i), y(j), z(k))
+
+                    ! Interpolate along x-axis
+                    nx00 = (1.0 - sx)*n000 + sx*n100
+                    nx10 = (1.0 - sx)*n010 + sx*n110
+                    nx01 = (1.0 - sx)*n001 + sx*n101
+                    nx11 = (1.0 - sx)*n011 + sx*n111
+
+                    ! Interpolate along y-axis
+                    nxy0 = (1.0 - sy)*nx00 + sy*nx10
+                    nxy1 = (1.0 - sy)*nx01 + sy*nx11
+
+                    ! Interpolate along z-axis
+                    noise(i, j, k) = (1.0 - sz)*nxy0 + sz*nxy1
+
+                end do
+            end do
+        end do
+        !$omp end parallel do
+
+    end function perlin_3d
+
+    !
+    ! Generate 3D fractal noise based on Perlin noise
+    !
+    function generate_fractal_noise_3d(this) result(fractal_noise)
+
+        class(fractal_noise_3d), intent(in) :: this
+
+        integer :: n1, n2, n3, res_x, res_y, res_z, seed, octaves
+        real :: persistence, lacunarity
+        real, allocatable, dimension(:, :, :) :: fractal_noise
+        real, allocatable, dimension(:, :, :) :: noise
+        real :: amplitude, frequency
+        integer :: octave
+        integer :: grid_check, nx, ny, nz
+
+        n1 = this%n1
+        n2 = this%n2
+        n3 = this%n3
+        res_x = this%res1
+        res_y = this%res2
+        res_z = this%res3
+        seed = this%seed*20
+        octaves = this%octaves
+        persistence = this%persistence
+        lacunarity = this%lacunarity
+
+        grid_check = floor(lacunarity**(octaves - 1)*res_x)
+        nx = ceiling(n1*1.0/grid_check)*grid_check
+
+        grid_check = floor(lacunarity**(octaves - 1)*res_y)
+        ny = ceiling(n2*1.0/grid_check)*grid_check
+
+        grid_check = floor(lacunarity**(octaves - 1)*res_z)
+        nz = ceiling(n3*1.0/grid_check)*grid_check
+
+        ! Initialize the fractal noise array
+        fractal_noise = zeros(nx, ny, nz)
+
+        ! Start with base frequency and amplitude
+        frequency = 1.0
+        amplitude = 1.0
+
+        ! Loop over octaves
+        do octave = 1, octaves
+
+            ! Generate Perlin noise for the current octave
+            noise = perlin_3d(res_x*frequency, res_y*frequency, res_z*frequency, nx, ny, nz, seed + octave)
+
+            ! Add the current octave to the fractal noise
+            fractal_noise = fractal_noise + amplitude*noise
+
+            ! Update amplitude and frequency for the next octave
+            amplitude = amplitude*persistence
+            frequency = frequency*lacunarity
+
+        end do
+
+        ! Normalize fractal noise to [0, 1]
+        fractal_noise = fractal_noise(1:n1, 1:n2, 1:n3)
+        fractal_noise = (fractal_noise - mean(fractal_noise))/std(fractal_noise)
+
+    end function generate_fractal_noise_3d
 
 end module geological_model_utility

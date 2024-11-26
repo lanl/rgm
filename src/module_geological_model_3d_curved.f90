@@ -16,18 +16,38 @@
 !    Kai Gao, kaigao@lanl.gov
 !
 
-
-module geological_model_3d
+module geological_model_3d_curved
 
     use libflit
     use geological_model_utility
 
     implicit none
 
+    !
+    ! The module is mostly a simplified version of geological_model_3d
+    ! with a few changes:
+    !   - The way that generates layers and reflectors changes from
+    !       generate reflectivity series -> add faults -> convolve with wavelet
+    !       generate velocity model -> add faults -> compute reflectivity -> convolve with wavelet
+    !       The process is closer to realistic geological sedimentary and deformation process.
+    !       Note that in this case, the image of faults may not be zeros, especially for faults with
+    !       moderate angles.
+    !   - Allows for curved faults to further enhance reality where
+    !       the fault dip at the top can be different from that of the bottom
+    !   - Simplifies salt body insertion and reflectivity computation,
+    !       so the reflectivity image of salt may be more accurate now.
+    ! As such, there are some changes on the parameters of rgm3_curved
+    ! compared with rgm3, but the changes are minimized to keep consistency
+    !
+    ! Currently, the strike of a fault is still constant; future
+    ! version may introduce varying-strike faults.
+    !
+
     ! 3D random geological model -- acoustic
-    type rgm3
-        !> Meanings of the parameters are same with those in the
-        !> 2D case
+    type rgm3_curved
+        !> Meanings of the parameters are similar with those in the 2D case
+
+        !==============================================================================================
         integer :: n1 = 128
         integer :: n2 = 128
         integer :: n3 = 128
@@ -35,18 +55,20 @@ module geological_model_3d
         integer :: nl = 20
         integer :: seed = -1
         real :: refl_smooth = 20.0
+        real :: refl_smooth_top = 40.0
         real :: f0 = 150.0
         real :: fwidth = 2.0
         real, allocatable, dimension(:) :: dip, strike, rake, disp
         real, dimension(1:2) :: refl_slope = [0.0, 0.0]
+        real, dimension(1:2) :: refl_slope_top = [0.0, 0.0]
         real, dimension(1:3) :: noise_smooth = [1.0, 1.0, 1.0]
         real :: noise_level = 0.25
-        real, dimension(1:3) :: image_smooth = [0.0, 0.0, 0.0]
         character(len=24) :: wave = 'ricker'
         character(len=24) :: refl_shape = 'random'
+        real, allocatable, dimension(:, :) :: refl
         integer :: ng = 2
-        real, dimension(1:2) :: refl_amp = [0.5, 1.0]
         real, dimension(1:2) :: refl_height = [0.0, 10.0]
+        real, dimension(1:2) :: refl_height_top = [0.0, 5.0]
         !> Range of Gaussian standard devision along x2 for refl_shape = gaussian
         real, dimension(1:2) :: refl_sigma2 = [0.0, 0.0]
         !> Range of Gaussian mean along x2 for refl_shape = gaussian
@@ -55,13 +77,8 @@ module geological_model_3d
         real, dimension(1:2) :: refl_sigma3 = [0.0, 0.0]
         !> Range of Gaussian mean along x3 for refl_shape = gaussian
         real, dimension(1:2) :: refl_mu3 = [0.0, 0.0]
-        real, allocatable, dimension(:, :) :: refl
         real :: lwv = 0.0
-        integer :: unconf = 0
-        real, dimension(1:2) :: unconf_z = [0.0, 0.5]
-        real, dimension(1:2) :: unconf_amp = [0.05, 0.15]
-        integer :: unconf_nl = 99999
-        real :: lwmin = 0.5
+
         logical :: yn_rgt = .false.
         logical :: yn_facies = .false.
         logical :: yn_fault = .true.
@@ -71,13 +88,29 @@ module geological_model_3d
         real, allocatable, dimension(:, :, :) :: psf
         logical :: custom_psf = .false.
         real :: facies_threshold = 0.0
-        character(len=12) :: refl_amp_dist = 'normal'
+        !        character(len=12) :: refl_amp_dist = 'normal'
         character(len=12) :: noise_type = 'normal'
         logical :: yn_conv_noise = .false.
         real :: secondary_refl_height_ratio = 0.0
         logical :: yn_regular_fault = .false.
         real, allocatable, dimension(:) :: wave_filt_freqs, wave_filt_amps
+        !> Min value for scaling the facies
+        real :: vmin = 2000.0
+        !> Max value for scaling the facies; after scaling, the facies will fall in [vmin, vmax]
+        real :: vmax = 4000.0
+        !> Velocity perturbation of layers
+        real :: delta_v = 500.0
 
+        !> Dip increase/descrease at the top compared with the top
+        real, dimension(1:2) :: delta_dip = [15.0, 30.0]
+
+        !==============================================================================================
+        integer :: unconf = 0
+        real, dimension(1:2) :: unconf_z = [0.0, 0.5]
+        real, dimension(1:2) :: unconf_amp = [0.05, 0.15]
+        integer :: unconf_nl = 99999
+
+        !==============================================================================================
         logical :: yn_salt = .false.
         integer :: nsalt = 1
         integer :: nstem = 5
@@ -85,9 +118,6 @@ module geological_model_3d
         real, dimension(1:2) :: salt_top_max = [0.2, 0.4]
         real :: salt_top_smooth = 10.0
         character(len=24) :: salt_type = 'dome'
-        real :: vmin = 2000.0
-        real :: vmax = 4000.0
-        real :: perturb_max = 0.2
         real :: salt_vel = 5000.0
         real, allocatable, dimension(:, :, :) :: salt
         real :: salt_top_amp = 20.0
@@ -96,16 +126,16 @@ module geological_model_3d
 
     contains
         procedure :: generate => generate_3d
-    end type rgm3
+    end type rgm3_curved
 
     private
-    public :: rgm3
+    public :: rgm3_curved
 
 contains
 
     subroutine generate_3d(this)
 
-        class(rgm3), intent(inout) :: this
+        class(rgm3_curved), intent(inout) :: this
 
         if (this%nf == 0) then
             this%yn_fault = .false.
@@ -121,31 +151,38 @@ contains
 
     subroutine generate_3d_geological_model(this)
 
-        type(rgm3), intent(inout) :: this
+        type(rgm3_curved), intent(inout) :: this
 
         real, allocatable, dimension(:, :, :) :: w, f, t, m
-        real, allocatable, dimension(:, :, :) :: ww, ff, cf, tt, mm
+        real, allocatable, dimension(:, :, :) :: ww, ff, cf, tt, mm, lz
         integer :: nf, nl, n1, n2, n3
-        real, allocatable, dimension(:) :: disp, dip, strike, rake, refl, reflf, f1, f2, f3
-        integer :: depth, newi, newj, newk
-        real, allocatable, dimension(:, :) :: r, sr
-        integer :: i, j, k, fi, ne1, ne2, ne3
-        integer, allocatable, dimension(:) :: ri
-        real, allocatable, dimension(:) :: wavelet, phi, rr, pp, qq, imp
-        real, allocatable, dimension(:, :) :: layer_thick
-        real :: f0, x0, y0, z0, x1, y1, z1, x2, y2, z2
-        real :: fwidth, dt, wt
-        real :: lw
+        real, allocatable, dimension(:) :: disp, dip, strike, rake, f2, f3, vv
+        integer :: newi, newj, newk
+        real, allocatable, dimension(:, :) :: r, rt, sr
+        integer :: i, j, k, fi, ne1, ne2, ne3, l
+        real, allocatable, dimension(:) :: plw
+        real, allocatable, dimension(:, :, :) :: fdip, fstrike, frake, fdisp
+        real, allocatable, dimension(:, :, :) :: ffdip, ffstrike, ffrake, ffdisp
+        real, allocatable, dimension(:) :: wavelet
+        real :: f0, x0, y0, fwidth, dt, wt
         real, allocatable, dimension(:) :: mu2, sigma2, mu3, sigma3, height
-        real :: spi, spj, spk
-        integer :: nlt
         real, dimension(1:2) :: gmu2, gmu3, gsigma2, gsigma3
         real, allocatable, dimension(:, :, :) :: psf
         real, allocatable, dimension(:) :: psf1, psf2, psf3
-        real, allocatable, dimension(:) :: sumdisp, rc1, rc2, rc
-        real, allocatable, dimension(:, :, :) :: rcc
+        real, allocatable, dimension(:) :: sumdisp, rc
+        real :: theta
+        real, allocatable, dimension(:) :: delta_dip
         real, dimension(1:2) :: pt
+        real, allocatable, dimension(:, :) :: dips
         integer :: nsf
+        real :: a, b, xs, ys, xys, xys_prev, dxys, b_prev, dist_prev
+        logical, allocatable, dimension(:, :, :) :: fblock
+        real, allocatable, dimension(:) :: x1, x2, x3, x4, rds
+        integer :: nd, isalt
+        real, allocatable, dimension(:, :) :: slice, topz
+        real :: dist, tp
+        integer :: ag, nex
+        integer, allocatable, dimension(:) :: gmax, hmax
         type(fractal_noise_2d) :: pn
 
         fwidth = this%fwidth
@@ -199,19 +236,6 @@ contains
 
             else
 
-                !                ! Dip angles
-                !                dip = random(nf, range=this%dip, seed=this%seed)*const_deg2rad
-                !
-                !                ! Strike angles
-                !                strike = random(nf, range=this%strike, seed=this%seed*2)*const_deg2rad
-                !
-                !                ! Rake angles
-                !                rake = random(nf, range=this%rake, seed=this%seed*3)*const_deg2rad
-                !
-                !                ! Fault displacements
-                !                disp = random(nf, range=this%disp, seed=this%seed*4)
-                !                disp(1:nf:2) = -disp(1:nf:2)
-
                 ! Dip, strike, rake angles, and fault displacements
                 nsf = size(this%dip)/2
                 dip = random(ceiling(nf*1.0/nsf), range=this%dip(1:2), seed=this%seed)
@@ -256,11 +280,39 @@ contains
             n1 = n1 + 1
         end if
 
-        sumdisp = disp*(cos(rake)*sin(strike) - sin(rake)*cos(dip)*cos(strike))
+        ! Compute the top and bottom fault dip angles
+        ! Note that to ensure the faults have proper dip angle range within the final cropped image,
+        ! here I add some extra degrees to the begin and end dip angles
+        dips = zeros(n1, nf)
+        delta_dip = random(nf, range=this%delta_dip, seed=nint(this%seed*4.5))
+        do i = 1, nf
+            if (dip(i) <= const_pi_half) then
+                dips(:, i) = linspace(dip(i) + delta_dip(i)*const_deg2rad*ne1*1.0/this%n1, &
+                    dip(i) - delta_dip(i)*const_deg2rad*(1.0 + ne1*1.0/n1), n1)
+                where (dips(:, i) >= const_pi_half)
+                    dips(:, i) = const_pi_half*0.99
+                end where
+                where (dips(:, i) < 0)
+                    dips(:, i) = 0
+                end where
+            else
+                dips(:, i) = linspace(dip(i) - delta_dip(i)*const_deg2rad*ne1*1.0/this%n1, &
+                    dip(i) + delta_dip(i)*const_deg2rad*(1.0 + ne1*1.0/n1), n1)
+                where (dips(:, i) <= const_pi_half)
+                    dips(:, i) = 1.01*const_pi_half
+                end where
+                where (dips(:, i) > const_pi)
+                    dips(:, i) = const_pi
+                end where
+            end if
+        end do
+
+        ! Compute the number of padding grid points along x2
+        sumdisp = disp*(cos(rake)*sin(strike) - sin(rake)*cos(dips(n1, :))*cos(strike))
         ne2 = max(nint(sum(sumdisp, mask=sumdisp > 0)), -nint(sum(sumdisp, mask=sumdisp < 0)))
         n2 = n2 + 2*ne2 + 2
 
-        sumdisp = disp*(cos(rake)*cos(strike) + sin(rake)*cos(dip)*sin(strike))
+        sumdisp = disp*(cos(rake)*cos(strike) + sin(rake)*cos(dips(n1, :))*sin(strike))
         ne3 = max(nint(sum(sumdisp, mask=sumdisp > 0)), -nint(sum(sumdisp, mask=sumdisp < 0)))
         n3 = n3 + 2*ne3 + 2
 
@@ -271,6 +323,10 @@ contains
                 r = random(n2, n3, dist='normal', seed=this%seed*5)
                 r = gauss_filt(r, [this%refl_smooth, this%refl_smooth])
                 r = rescale(r, this%refl_height)
+
+                rt = random(n2, n3, dist='normal', seed=this%seed*5 - 1)
+                rt = gauss_filt(rt, [this%refl_smooth_top, this%refl_smooth_top])
+                rt = rescale(rt, this%refl_height_top)
 
             case ('gaussian')
 
@@ -302,9 +358,8 @@ contains
                         [sigma2(i), sigma3(i)], &
                         linspace(0.0, n2 - 1.0, n2), linspace(0.0, n3 - 1.0, n3)), [0.0, height(i)])
                 end do
-                if (this%lwv >= 0) then
-                    r = -r
-                end if
+                r = rescale(r, this%refl_height)
+                rt = rescale(r, this%refl_height_top)
 
             case ('perlin')
                 pn%n1 = n2
@@ -313,20 +368,34 @@ contains
                 r = gauss_filt(pn%generate(), [this%refl_smooth, this%refl_smooth])
                 r = rescale(r, this%refl_height)
 
+                pn%n1 = n2
+                pn%n2 = n3
+                pn%seed = this%seed*5 - 1
+                rt = gauss_filt(pn%generate(), [this%refl_smooth, this%refl_smooth])
+                rt = rescale(rt, this%refl_height)
+
             case ('custom')
                 call assert(size(this%refl, 1) == this%n2 - 2*ne2 .and. &
                     size(this%refl, 2) == this%n3 - 2*ne3, &
                     '<generate_3d_geological_model> Error: size(refl) must = (n2, n3)')
                 r = this%refl
-                r = -r
+                rt = rescale(r, this%refl_height_top)
 
         end select
 
+        ! Add secondary height fluctuation to the reflectors
         if (this%secondary_refl_height_ratio > 0) then
+
             sr = random(n2, n3, dist='normal', seed=this%seed*5 - 1)
             sr = gauss_filt(sr, [this%refl_smooth, this%refl_smooth]/5.0)
             sr = rescale(sr, [minval(r), maxval(r)]*this%secondary_refl_height_ratio)
             r = r + sr
+
+            sr = random(n2, n3, dist='normal', seed=this%seed*5 - 2)
+            sr = gauss_filt(sr, [this%refl_smooth_top, this%refl_smooth_top]/5.0)
+            sr = rescale(sr, [minval(rt), maxval(rt)]*this%secondary_refl_height_ratio)
+            rt = rt + sr
+
         end if
 
         !$omp parallel do private(j, k) collapse(2)
@@ -334,139 +403,84 @@ contains
             do j = 1, n2
                 r(j, k) = r(j, k) + (j - 1.0)*this%refl_slope(1)/this%n2 &
                     + (k - 1.0)*this%refl_slope(2)/this%n3
+                rt(j, k) = rt(j, k) + (j - 1.0)*this%refl_slope_top(1)/this%n2 &
+                    + (k - 1.0)*this%refl_slope_top(2)/this%n3
             end do
         end do
         !$omp end parallel do
-        r = r - mean(r)
+        r = r - maxval(r)
+        rt = rt - minval(rt) + n1
 
-        ! Reflectivity
         nl = nint(this%nl + this%nl*2.0*ne1/(n1 - 2*ne1))
 
-        rc1 = random(nint(nl/2.0), seed=this%seed*10, range=this%refl_amp, dist=this%refl_amp_dist)
-        if (this%refl_amp_dist == 'normal' .or. this%refl_amp_dist == 'gaussian') then
-            rc1 = rescale(rc1, this%refl_amp)
-        end if
-        rc2 = random(nl - nint(nl/2.0), seed=this%seed*11, range=this%refl_amp, dist=this%refl_amp_dist)
-        if (this%refl_amp_dist == 'normal' .or. this%refl_amp_dist == 'gaussian') then
-            rc2 = rescale(rc2, this%refl_amp)
-        end if
-        rc2 = -rc2
+        vv = random(nl - 1, seed=this%seed*6)*this%delta_v
+        vv = linspace(this%vmax*(1.0 + ne1*1.0/this%n1), this%vmin*(1.0 - ne1*1.0/this%n1), nl) + vv
 
-        lw = (n1 - 1.0)/nl
-        ri = nint(linspace(1.0, n1 - lw*2.0/3.0, nl) + random(nl, range=[0.0, lw*2.0/3.0], seed=this%seed*12))
-        ri = random_permute(ri, seed=this%seed*13)
+        lz = zeros(nl, n2, n3)
+        plw = random(nl, range=[1 - this%lwv, 1 + this%lwv], seed=this%seed*7)
 
-        rc = zeros(nl)
-        rc = [rc1, rc2]
-        rc = rc(random_order(nl, seed=this%seed*14))
-        refl = zeros(n1)
-        j = 1
-        do i = 1, n1
-            if (any(i == ri)) then
-                refl(i) = rc(j)
-                j = j + 1
-            end if
+        !$omp parallel do private(j, k)
+        do k = 1, n3
+            do j = 1, n2
+                lz(:, j, k) = linspace(r(j, k), rt(j, k), nl)
+            end do
         end do
+        !$omp end parallel do
+        lz = deriv(lz, dim=1)
 
-        if (this%yn_facies) then
-            reflf = refl
-            where (abs(reflf) < this%facies_threshold*maxval(abs(reflf)))
-                reflf = 0
-            end where
-            imp = integ(reflf)
-            imp = imp - mean(imp)
+        !$omp parallel do private(j, k)
+        do k = 1, n3
+            do j = 1, n2
+                lz(:, j, k) = r(j, k) + rescale(integ(lz(:, j, k)*plw), [0.0, rt(j, k) - r(j, k)])
+            end do
+        end do
+        !$omp end parallel do
 
-            block
-
-                real, allocatable, dimension(:) :: wp, uv
-                integer :: i, j, nuv
-
-                uv = unique(imp)
-                nuv = size(uv)
-                wp = linspace(0.0, 1.0, nuv)
-
-                reflf = 0
-                do i = 1, nuv
-                    where (imp == uv(i))
-                        reflf = wp(i)
-                    end where
-                end do
-                reflf = rescale(reflf, [0.0, 1.0])
-                imp = imp/maxval(imp)
-                imp = reflf + this%perturb_max*imp
-
-            end block
-
-        end if
-
-        if (this%yn_rgt) then
-            phi = linspace(0.0, 1.0, n1)
-        end if
-
-        ! Spatially variant layer thickness
-        layer_thick = rescale(r, [1.0, 1.0 + abs(this%lwv)])
-
-        ! Create non-fault image and RGT
+        ! Stack layers to create a layer-constant velocity model
         w = zeros(n1, n2, n3)
         if (this%yn_rgt) then
             t = zeros(n1, n2, n3)
         end if
-        if (this%yn_facies) then
-            m = zeros(n1, n2, n3)
-        end if
-
-        nlt = nint(maxval(layer_thick*n1))
-        rr = zeros(nlt)
-        pp = zeros(nlt)
-        qq = zeros(nlt)
-
-        !$omp parallel do private(i, j, k, nlt, depth, rr, pp, qq)
+        !$omp parallel do private(i, j, k, l)
         do k = 1, n3
             do j = 1, n2
-
-                nlt = nint(n1*layer_thick(j, k))
-                depth = nint(r(j, k))
-
-                ! Using sinc or cubic here is very slow
-                ! rr = interp(refl, n1, 1.0, r(j, k), n1, layer_thick(j, k), depth*1.0, 'linear')
-
-                ! Reflectivity
-                rr(1:nlt) = interp(refl, n1, 1.0, r(j, k), nlt, 1.0/layer_thick(j, k), depth*1.0, 'linear')
-                ! RGT
-                if (this%yn_rgt) then
-                    pp(1:nlt) = interp(phi, n1, 1.0, r(j, k), nlt, 1.0/layer_thick(j, k), depth*1.0, 'linear')
-                end if
-                ! Model perturbation
-                if (this%yn_facies) then
-                    qq(1:nlt) = interp(imp, n1, 1.0, r(j, k), nlt, 1.0/layer_thick(j, k), depth*1.0, 'nearest')
-                end if
-
                 do i = 1, n1
-                    if (depth + i >= 1 .and. depth + i <= n1) then
-                        w(depth + i, j, k) = rr(i)
-                        if (this%yn_rgt) then
-                            t(depth + i, j, k) = pp(i)
+
+                    loop_layer: do l = 1, nl - 1
+                        if (n1 - i >= lz(l, j, k) .and. n1 - i < lz(l + 1, j, k)) then
+                            w(i, j, k) = vv(l)
+                            exit loop_layer
                         end if
-                        if (this%yn_facies) then
-                            m(depth + i, j, k) = qq(i)
-                        end if
-                    end if
+                    end do loop_layer
+
                 end do
+
+                ! The RGT is linearly interpolated based on the location of reflectors
+                ! As such, it may be slightly different from what obtained with rgm2
+                if (this%yn_rgt) then
+                    t(:, j, k) = ginterp(n1 - 1.0 - lz(:, j, k), linspace(1.0, 0.0, nl), regspace(0.0, 1.0, n1 - 1.0))
+                end if
+
             end do
         end do
         !$omp end parallel do
-
-        if (this%lwv < 0) then
-            w = flip(w, [1])
-            t = flip(1 - t, [1])
-            m = flip(m, [1])
-        end if
 
         ! Add faults
         f = zeros(n1, n2, n3)
         ff = zeros(n1, n2, n3)
         cf = zeros(n1, n2, n3)
         ww = zeros(n1, n2, n3)
+
+        fdip = zeros(n1, n2, n3)
+        fstrike = zeros(n1, n2, n3)
+        frake = zeros(n1, n2, n3)
+        fdisp = zeros(n1, n2, n3)
+
+        ffdip = zeros(n1, n2, n3)
+        ffstrike = zeros(n1, n2, n3)
+        ffrake = zeros(n1, n2, n3)
+        ffdisp = zeros(n1, n2, n3)
+
         if (this%yn_rgt) then
             tt = zeros(n1, n2, n3)
         end if
@@ -475,9 +489,8 @@ contains
         end if
 
         if (nf >= 1) then
-            if (this%yn_regular_fault) then
 
-                f1 = 0.5*n1*ones(nf)
+            if (this%yn_regular_fault) then
 
                 rc = random(nf - 1, range=[0.75, 1.25]*(n2 - 2*ne2)/(nf - 1.0), seed=this%seed*12)
                 rc = rc*(n2 - 2*ne2)/sum(rc)
@@ -502,107 +515,219 @@ contains
 
             else
 
-                f1 = random(nf, range=[ne1 + 5.0, n1 - ne1 - 5.0], seed=this%seed*15)
-                f2 = random(nf, range=[ne2 + 0.05*this%n2, n2 - ne2 - 0.05*this%n2], seed=this%seed*16)
-                f3 = random(nf, range=[ne3 + 0.05*this%n3, n3 - ne3 - 0.05*this%n3], seed=this%seed*17)
+                f2 = random(nf, range=[ne2 + 0.1*n2, n2 - ne2 - 0.1*n2], seed=this%seed*16, spacing=0.75*(n2 - 2*ne2 - 0.2*n2)/nf)
+                f3 = random(nf, range=[ne3 + 0.1*n3, n3 - ne3 - 0.1*n3], seed=this%seed*17, spacing=0.75*(n3 - 2*ne3 - 0.2*n3)/nf)
 
             end if
 
             do fi = 1, nf
 
                 ww = w
-                ff = f
-                cf = 0
                 if (this%yn_rgt) then
                     tt = t
                 end if
-                if (this%yn_facies) then
-                    mm = m
-                end if
+                ff = f
+                ffdip = fdip
+                ffstrike = fstrike
+                ffrake = frake
+                ffdisp = fdisp
+                cf = 0
 
-                ! Map fault to discrete grid
-                ! Coordinates of top/bottom center of the fracture cylinder
-                ! dip is used here, so x, y, z --> sin(dip), cos(dip), cos(dip)
-                ! instead of those in the spherical coordinate, see page 9 of Zhu's fk tutorial
-                x1 = f3(fi)
-                y1 = f2(fi)
-                z1 = f1(fi)
-                x2 = x1 - fwidth*sin(dip(fi))*sin(strike(fi))
-                y2 = y1 + fwidth*sin(dip(fi))*cos(strike(fi))
-                z2 = z1 - fwidth*cos(dip(fi))
+                xys_prev = 0
+                xys = 0
+                b_prev = 0
+                fblock = falses(n1, n2, n3)
 
-                ! Iterate through the points around the fracture
-                !$omp parallel do private(i, j, k, x0, y0, z0) collapse(3)
-                do k = 1, n3
-                    do j = 1, n2
-                        do i = 1, n1
+                do i = 1, n1
 
-                            ! coordinates of a grid point
-                            x0 = k - 1.0
-                            y0 = j - 1.0
-                            z0 = i - 1.0
+                    theta = dips(i, fi)
 
-                            !
-                            ! cynlinder bottom center: (x1, y1, z1)
-                            ! cynlinder top center: (x2, y2, z2)
-                            ! point: (x0, y0, z0)
-                            ! point vector: (x0-x1, y0-y1, z0-z1)
-                            ! axis vector: (x2-x1, y2-y1, z2-z1)
-                            ! axis length: sqrt((x2-x1, y2-y1, z2-z1)**2)
-                            !
-                            ! Two conditions to ensure a point is in/on this fracture cylinder:
-                            ! Condition 1: point vector * axis vector >=0
-                            ! Condition 2: point vector projection length <= axis length
-                            !
-                            if ((x0 - x1)*(x2 - x1) + (y0 - y1)*(y2 - y1) + (z0 - z1)*(z2 - z1) >= 0 .and. &
-                                    (x0 - x1)*(x2 - x1) + (y0 - y1)*(y2 - y1) + (z0 - z1)*(z2 - z1) &
-                                    <= (x2 - x1)**2 + (y2 - y1)**2 + (z2 - z1)**2) then
-                                f(i, j, k) = fi*1.0
-                                cf(i, j, k) = 1.0
-                            end if
+                    !! The deviation of the curved fault w.r.t. the straight fault
+                    ! xs = -(1.0/tan(theta) - 1.0/tan(dip(fi)))*sin(strike(fi))*(i - 1.0)
+                    ! ys = +(1.0/tan(theta) - 1.0/tan(dip(fi)))*cos(strike(fi))*(i - 1.0)
 
+                    ! The location of the curved fault
+                    xs = -1.0/tan(theta)*sin(strike(fi))*(i - 1.0)
+                    ys = +1.0/tan(theta)*cos(strike(fi))*(i - 1.0)
+
+                    xys = sqrt(xs**2 + ys**2)
+                    if (i == 1) then
+                        xys_prev = xys
+                    end if
+                    dxys = xys - xys_prev
+
+                    if (abs(strike(fi) - const_pi_half) >= const_pi/4.0) then
+
+                        a = tan(strike(fi))
+                        b = (f2(fi) + ys) - a*(f3(fi) + xs)
+                        if (i == 1) then
+                            b_prev = b
+                        end if
+
+                        !$omp parallel do private(j, k, x0, y0, dist) collapse(2)
+                        do k = 1, n3
+                            do j = 1, n2
+
+                                x0 = k - 1.0
+                                y0 = j - 1.0
+
+                                dist = abs(y0 - (a*x0 + b))
+                                if (dist < 0.5*fwidth/sin(theta)) then
+                                    f(i, j, k) = fi
+                                    cf(i, j, k) = 1.0
+                                    fdip(i, j, k) = theta
+                                    fstrike(i, j, k) = strike(fi)
+                                    frake(i, j, k) = rake(fi)
+                                end if
+
+                            end do
                         end do
-                    end do
+                        !$omp end parallel do
+
+                        if (abs(dxys) >= sqrt(2.0)) then
+
+                            !$omp parallel do private(j, k, x0, y0, dist_prev, dist) collapse(2)
+                            do k = 1, n3
+                                do j = 1, n2
+
+                                    x0 = k - 1.0
+                                    y0 = j - 1.0
+
+                                    dist_prev = abs(y0 - (a*x0 + b_prev))
+                                    dist = abs(y0 - (a*x0 + b))
+                                    if (dist_prev <= sqrt(2.0)*abs(dxys) .and. dist <= sqrt(2.0)*abs(dxys)) then
+                                        f(i, j, k) = fi
+                                        cf(i, j, k) = 1.0
+                                        fdip(i, j, k) = theta
+                                        fstrike(i, j, k) = strike(fi)
+                                        frake(i, j, k) = rake(fi)
+                                    end if
+                                end do
+                            end do
+                            !$omp end parallel do
+
+                        end if
+
+                        !$omp parallel do private(j, k, x0, y0) collapse(2)
+                        do k = 1, n3
+                            do j = 1, n2
+                                x0 = k - 1.0
+                                y0 = j - 1.0
+                                if (theta < const_pi_half) then
+                                    if (y0 - (a*x0 + b) < 0) then
+                                        fblock(i, j, k) = .true.
+                                    end if
+                                else
+                                    if (y0 - (a*x0 + b) > 0) then
+                                        fblock(i, j, k) = .true.
+                                    end if
+                                end if
+                            end do
+                        end do
+                        !$omp end parallel do
+
+                    else
+
+                        a = tan(const_pi_half - strike(fi))
+                        b = (f3(fi) + xs) - a*(f2(fi) + ys)
+                        if (i == 1) then
+                            b_prev = b
+                        end if
+
+                        !$omp parallel do private(j, k, x0, y0, dist) collapse(2)
+                        do k = 1, n3
+                            do j = 1, n2
+
+                                x0 = k - 1.0
+                                y0 = j - 1.0
+
+                                dist = abs(x0 - (a*y0 + b))
+                                if (dist < 0.5*fwidth/sin(theta)) then
+                                    f(i, j, k) = fi
+                                    cf(i, j, k) = 1.0
+                                    fdip(i, j, k) = theta
+                                    fstrike(i, j, k) = strike(fi)
+                                    frake(i, j, k) = rake(fi)
+                                end if
+
+                            end do
+                        end do
+                        !$omp end parallel do
+
+                        if (abs(dxys) >= sqrt(2.0)) then
+
+                            !$omp parallel do private(j, k, x0, y0, dist_prev, dist) collapse(2)
+                            do k = 1, n3
+                                do j = 1, n2
+
+                                    x0 = k - 1.0
+                                    y0 = j - 1.0
+
+                                    dist_prev = abs(x0 - (a*y0 + b_prev))
+                                    dist = abs(x0 - (a*y0 + b))
+                                    if (dist_prev <= sqrt(2.0)*abs(dxys) .and. dist <= sqrt(2.0)*abs(dxys)) then
+                                        f(i, j, k) = fi
+                                        cf(i, j, k) = 1.0
+                                        fdip(i, j, k) = theta
+                                        fstrike(i, j, k) = strike(fi)
+                                        frake(i, j, k) = rake(fi)
+                                    end if
+                                end do
+                            end do
+                            !$omp end parallel do
+
+                        end if
+
+                        !$omp parallel do private(j, k, x0, y0) collapse(2)
+                        do k = 1, n3
+                            do j = 1, n2
+                                x0 = k - 1.0
+                                y0 = j - 1.0
+                                if (theta < const_pi_half) then
+                                    if (x0 - (a*y0 + b_prev) <= 0) then
+                                        fblock(i, j, k) = .true.
+                                    end if
+                                else
+                                    if (x0 - (a*y0 + b_prev) >= 0) then
+                                        fblock(i, j, k) = .true.
+                                    end if
+                                end if
+                            end do
+                        end do
+                        !$omp end parallel do
+
+                    end if
+
+                    ! next iteration
+                    xys_prev = xys
+                    b_prev = b
+
                 end do
-                !$omp end parallel do
 
-                spi = disp(fi)*(-sin(rake(fi))*sin(dip(fi)))
-                spj = disp(fi)*(cos(rake(fi))*sin(strike(fi)) - sin(rake(fi))*cos(dip(fi))*cos(strike(fi)))
-                spk = disp(fi)*(cos(rake(fi))*cos(strike(fi)) + sin(rake(fi))*cos(dip(fi))*sin(strike(fi)))
-
-                ! Shift blocks on one side of the fault
-                !$omp parallel do private(i, j, k, x0, y0, z0, newi, newj, newk) collapse(3)
+                ! shift block
+                !$omp parallel do private(i, j, k, newi, newj, newk) collapse(3)
                 do k = 1, n3
                     do j = 1, n2
                         do i = 1, n1
 
-                            x0 = k - 1.0 + 0.5*sign(1.0, x2 - x1)
-                            y0 = j - 1.0 + 0.5*sign(1.0, y2 - y1)
-                            z0 = i - 1.0 + 0.5*sign(1.0, z2 - z1)
+                            newi = nint(i + (-sin(rake(fi))*sin(dip(fi)))*disp(fi))
+                            newj = nint(j + (cos(rake(fi))*sin(strike(fi)) - sin(rake(fi))*cos(dip(fi))*cos(strike(fi)))*disp(fi))
+                            newk = nint(k + (cos(rake(fi))*cos(strike(fi)) + sin(rake(fi))*cos(dip(fi))*sin(strike(fi)))*disp(fi))
 
-                            ! One condition to sure the point is to be moved:
-                            ! The point is outside/on the fracture cylinder
-                            if ((x0 - x2)*(x2 - x1) + (y0 - y2)*(y2 - y1) + (z0 - z2)*(z2 - z1) >= 0) then
-
-                                newi = nint(i + spi)
-                                newj = nint(j + spj)
-                                newk = nint(k + spk)
-
-                                if (newi >= 1 .and. newi <= n1 &
-                                        .and. newj >= 1 .and. newj <= n2 &
-                                        .and. newk >= 1 .and. newk <= n3) then
+                            if (newi >= 1 .and. newi <= n1 .and. newj >= 1 .and. newj <= n2 .and. newk >= 1 .and. newk <= n3) then
+                                if (fblock(newi, newj, newk)) then
                                     w(newi, newj, newk) = ww(i, j, k)
-                                    if (cf(newi, newj, newk) == 0) then
-                                        f(newi, newj, newk) = ff(i, j, k)
-                                    end if
                                     if (this%yn_rgt) then
                                         t(newi, newj, newk) = tt(i, j, k)
                                     end if
-                                    if (this%yn_facies) then
-                                        m(newi, newj, newk) = mm(i, j, k)
+                                    if (cf(newi, newj, newk) == 0) then
+                                        f(newi, newj, newk) = ff(i, j, k)
+                                        fdip(newi, newj, newk) = ffdip(i, j, k)
+                                        fstrike(newi, newj, newk) = ffstrike(i, j, k)
+                                        frake(newi, newj, newk) = ffrake(i, j, k)
+                                        fdisp(newi, newj, newk) = ffdisp(i, j, k)
                                     end if
                                 end if
-
                             end if
 
                         end do
@@ -614,135 +739,129 @@ contains
 
         end if
 
-        this%image = w(ne1 + 1:ne1 + this%n1 + 2, ne2 + 1:ne2 + this%n2 + 2, ne3 + 1:ne3 + this%n3 + 2)
-        n1 = size(this%image, 1)
-        n2 = size(this%image, 2)
-        n3 = size(this%image, 3)
-
         ! Add salt
         if (this%yn_salt) then
-            block
 
-                real, allocatable, dimension(:) :: x1, x2, x3, x4, rds, topx, topy
-                integer :: nd, isalt
-                real, allocatable, dimension(:, :) :: slice, topz
-                real :: dist, pt, tp
-                integer :: ag, nex
-                integer, allocatable, dimension(:) :: gmax, hmax
+            tp = mean(this%salt_max_radius)
 
-                tp = mean(this%salt_max_radius)
+            select case (this%refl_shape)
+                case ('random')
+                    gmax = random(this%nsalt, range=[ne2 + tp*n2/2.0, n2 - ne2 - tp*n2/2.0], seed=this%seed*5)
+                    hmax = random(this%nsalt, range=[ne3 + tp*n3/2.0, n3 - ne3 - tp*n3/2.0], seed=this%seed*6)
+                case ('gaussian')
+                    if (this%nsalt > this%ng) then
+                        gmax = [mu2, random(this%nsalt - this%ng, range=[ne2 + tp*n2/2.0, n2 - ne2 - tp*n2/2.0], seed=this%seed*5)]
+                        hmax = [mu3, random(this%nsalt - this%ng, range=[ne3 + tp*n3/2.0, n3 - ne3 - tp*n3/2.0], seed=this%seed*6)]
+                    else
+                        gmax = mu2
+                        hmax = mu3
+                    end if
+            end select
 
-                select case (this%refl_shape)
-                    case ('random', 'perlin', 'custom')
-                        gmax = random(this%nsalt, range=[tp*n2/2.0, n2 - tp*n2/2.0], seed=this%seed*5)
-                        hmax = random(this%nsalt, range=[tp*n3/2.0, n3 - tp*n3/2.0], seed=this%seed*6)
-                    case ('gaussian')
-                        if (this%nsalt > this%ng) then
-                            gmax = [mu2, random(this%nsalt - this%ng, range=[tp*n2/2.0, n2 - tp*n2/2.0], seed=this%seed*5)]
-                            hmax = [mu3, random(this%nsalt - this%ng, range=[tp*n3/2.0, n3 - tp*n3/2.0], seed=this%seed*6)]
-                        else
-                            gmax = mu2
-                            hmax = mu3
-                        end if
-                end select
+            nex = 11
+            this%salt = zeros(n1 + nex, n2, n3)
+            rds = random(this%nsalt, range=this%salt_max_radius, seed=this%seed*15 - 1)
 
-                rcc = zeros_like(this%image)
-                nex = 11
-                this%salt = zeros(n1 + nex, n2, n3)
-                rds = random(this%nsalt, range=this%salt_max_radius, seed=this%seed*15 - 1)
+            topz = random(n2, n3, seed=this%seed*15 - 2, dist='normal')
+            topz = gauss_filt(topz, [this%salt_top_smooth, this%salt_top_smooth])
+            topz = rescale(topz, [0.0, this%salt_top_amp])
 
-                topz = random(n2, n3, seed=this%seed*15 - 2, dist='normal')
-                topz = gauss_filt(topz, [this%salt_top_smooth, this%salt_top_smooth])
-                topz = rescale(topz, [0.0, this%salt_top_amp])
+            do isalt = 1, this%nsalt
 
-                do isalt = 1, this%nsalt
+                x1 = random(this%nstem + 1, seed=this%seed*15*isalt)
+                x2 = random(this%nstem + 1, seed=this%seed*16*isalt)
+                x3 = random(this%nstem + 1, seed=this%seed*17*isalt)
+                x4 = random(this%nstem + 1, seed=this%seed*18*isalt)
 
-                    ! Define the horizontal profile of a salt body
-                    x1 = random(this%nstem + 1, seed=this%seed*15*isalt)
-                    x2 = random(this%nstem + 1, seed=this%seed*16*isalt)
-                    x3 = random(this%nstem + 1, seed=this%seed*17*isalt)
-                    x4 = random(this%nstem + 1, seed=this%seed*18*isalt)
+                nd = nint((1.0 - rand(range=this%salt_top_max, seed=this%seed*14*isalt - 1))*this%n1 + ne1)
 
-                    nd = nint((1.0 - rand(range=this%salt_top_max, seed=this%seed*14*isalt - 1))*this%n1)
+                x1 = ginterp([0.0, rand(range=[0.05*nd, 0.15*nd], seed=this%seed*19*isalt - 1), &
+                    sort(random(this%nstem - 2, range=[0.2*nd, nd - 0.1*nd], seed=this%seed*19*isalt)), nd - 1.0], &
+                    x1, linspace(0.0, nd + 10.0, nd + 11), method='pchip')
+                x2 = ginterp([0.0, rand(range=[0.05*nd, 0.15*nd], seed=this%seed*20*isalt - 1), &
+                    sort(random(this%nstem - 2, range=[0.2*nd, nd - 0.1*nd], seed=this%seed*20*isalt)), nd - 1.0], &
+                    x2, linspace(0.0, nd + 10.0, nd + 11), method='pchip')
+                x3 = ginterp([0.0, rand(range=[0.05*nd, 0.15*nd], seed=this%seed*21*isalt - 1), &
+                    sort(random(this%nstem - 2, range=[0.2*nd, nd - 0.1*nd], seed=this%seed*21*isalt)), nd - 1.0], &
+                    x3, linspace(0.0, nd + 10.0, nd + 11), method='pchip')
+                x4 = ginterp([0.0, rand(range=[0.05*nd, 0.15*nd], seed=this%seed*22*isalt - 1), &
+                    sort(random(this%nstem - 2, range=[0.2*nd, nd - 0.1*nd], seed=this%seed*22*isalt)), nd - 1.0], &
+                    x4, linspace(0.0, nd + 10.0, nd + 11), method='pchip')
 
-                    x1 = ginterp([0.0, rand(range=[0.05*nd, 0.15*nd], seed=this%seed*19*isalt - 1), &
-                        sort(random(this%nstem - 2, range=[0.2*nd, nd - 0.1*nd], seed=this%seed*19*isalt)), nd - 1.0], &
-                        x1, linspace(0.0, nd + 10.0, nd + 11), method='pchip')
-                    x2 = ginterp([0.0, rand(range=[0.05*nd, 0.15*nd], seed=this%seed*20*isalt - 1), &
-                        sort(random(this%nstem - 2, range=[0.2*nd, nd - 0.1*nd], seed=this%seed*20*isalt)), nd - 1.0], &
-                        x2, linspace(0.0, nd + 10.0, nd + 11), method='pchip')
-                    x3 = ginterp([0.0, rand(range=[0.05*nd, 0.15*nd], seed=this%seed*21*isalt - 1), &
-                        sort(random(this%nstem - 2, range=[0.2*nd, nd - 0.1*nd], seed=this%seed*21*isalt)), nd - 1.0], &
-                        x3, linspace(0.0, nd + 10.0, nd + 11), method='pchip')
-                    x4 = ginterp([0.0, rand(range=[0.05*nd, 0.15*nd], seed=this%seed*22*isalt - 1), &
-                        sort(random(this%nstem - 2, range=[0.2*nd, nd - 0.1*nd], seed=this%seed*22*isalt)), nd - 1.0], &
-                        x4, linspace(0.0, nd + 10.0, nd + 11), method='pchip')
+                x1 = rescale(x1, range=[0.2, 1.0]*rds(isalt)*max(this%n2, this%n3))
+                x2 = rescale(x2, range=[0.2, 1.0]*rds(isalt)*max(this%n2, this%n3))
+                x3 = rescale(x3, range=[0.2, 1.0]*rds(isalt)*max(this%n2, this%n3))
+                x4 = rescale(x4, range=[0.2, 1.0]*rds(isalt)*max(this%n2, this%n3))
+                x1 = pad(x1, [n1 - nd, 0], method=['edge', 'edge'])
+                x2 = pad(x2, [n1 - nd, 0], method=['edge', 'edge'])
+                x3 = pad(x3, [n1 - nd, 0], method=['edge', 'edge'])
+                x4 = pad(x4, [n1 - nd, 0], method=['edge', 'edge'])
 
-                    x1 = rescale(x1, range=[0.2, 1.0]*rds(isalt)*max(n2, n3))
-                    x2 = rescale(x2, range=[0.2, 1.0]*rds(isalt)*max(n2, n3))
-                    x3 = rescale(x3, range=[0.2, 1.0]*rds(isalt)*max(n2, n3))
-                    x4 = rescale(x4, range=[0.2, 1.0]*rds(isalt)*max(n2, n3))
-                    x1 = pad(x1, [n1 - nd, 0], method=['edge', 'edge'])
-                    x2 = pad(x2, [n1 - nd, 0], method=['edge', 'edge'])
-                    x3 = pad(x3, [n1 - nd, 0], method=['edge', 'edge'])
-                    x4 = pad(x4, [n1 - nd, 0], method=['edge', 'edge'])
-
-                    ! Interpolate to get the 360-degree horizontal profile
-                    slice = zeros(360, n1 + nex)
-                    !$omp parallel do private(i, pt)
-                    do i = 1, n1 + nex
-                        pt = maxval(abs([x1(i), x2(i), x3(i), x4(i)]))*0.2
-                        slice(:, i) = interp([x1(i), x2(i), x3(i), x4(i), x1(i)], 5, 1.0/4, 0.0, &
-                            360, 1.0/359.0, 0.0, method='pchip') + gauss_filt(random(360, range=[-pt, pt], &
-                            seed=this%seed*22*isalt + 1), 6.0)
-                    end do
-                    !$omp end parallel do
-
-                    ! Fill the salt body
-                    !$omp parallel do private(i, j, k, dist, ag)
-                    do k = 1, n3
-                        do j = 1, n2
-                            dist = sqrt((j - gmax(isalt))**2 + (k - hmax(isalt))**2 + 0.0)
-                            ag = clip(nint(atan2(k - hmax(isalt) + 0.0, j - gmax(isalt) + float_tiny)*const_rad2deg) + 181, 1, 360)
-                            do i = n1 - nd - ceiling(maxval(topz)), n1 + nex
-                                if (dist <= slice(ag, i) .and. i >= n1 - nd - topz(j, k)) then
-                                    this%salt(i, j, k) = 1.0
-                                end if
-                            end do
-                        end do
-                    end do
-                    !$omp end parallel do
+                slice = zeros(360, n1 + nex)
+                !$omp parallel do private(i, pt)
+                do i = 1, n1 + nex
+                    pt = maxval(abs([x1(i), x2(i), x3(i), x4(i)]))*0.2
+                    slice(:, i) = interp([x1(i), x2(i), x3(i), x4(i), x1(i)], 5, 1.0/4, 0.0, &
+                        360, 1.0/359.0, 0.0, method='pchip')
+                    slice(:, i) = slice(:, i) + rescale(gauss_filt(random(360, seed=this%seed*22*isalt + 1), 6.0), range=[-pt, pt])
                 end do
+                !$omp end parallel do
 
-                this%salt = gauss_filt(this%salt, [2.0, 2.0, 2.0])
-                this%image = this%image*(1 - this%salt(1:n1, :, :))
-                this%salt = binarize(this%salt, 0.95, [0.0, 1.0])
-
-                !$omp parallel do private(i, j, k)
+                !$omp parallel do private(i, j, k, dist, ag)
                 do k = 1, n3
                     do j = 1, n2
-                        do i = 1, n1
-                            rcc(i, j, k) = (this%salt(i + 1, j, k) - this%salt(i, j, k)) &
-                                /(this%salt(i + 1, j, k) + this%salt(i, j, k) + float_small)
+                        dist = sqrt((j - gmax(isalt))**2 + (k - hmax(isalt))**2 + 0.0)
+                        ag = clip(nint(atan2(k - hmax(isalt) + 0.0, j - gmax(isalt) + float_tiny)*const_rad2deg) + 181, 1, 360)
+                        do i = n1 - nd - ceiling(maxval(topz)), n1 + nex
+                            if (dist <= slice(ag, i) .and. i >= n1 - nd - topz(j, k)) then
+                                this%salt(i, j, k) = 1.0
+                                if (i >= 1 .and. i <= n1) then
+                                    w(i, j, k) = this%salt_vel
+                                    f(i, j, k) = 0.0
+                                    fdip(i, j, k) = 0.0
+                                    fstrike(i, j, k) = 0.0
+                                    frake(i, j, k) = 0.0
+                                    fdisp(i, j, k) = 0.0
+                                    if (this%yn_rgt) then
+                                        t(i, j, k) = 1.0
+                                    end if
+                                end if
+                            end if
                         end do
                     end do
                 end do
                 !$omp end parallel do
+            end do
 
-                tp = rand(seed=this%seed*23)
-                if (tp > 0.5) then
-                    rcc = -rcc
-                end if
+            this%salt = this%salt(1:n1, 1:n2, 1:n3)
 
-                rcc = gauss_filt(rcc, [2.0, 0.5, 0.5])
-                this%salt = this%salt(1:n1, :, :)
-                if (this%salt_noise > 0) then
-                    rcc = rcc + noise_random_mix(n1, n2, n3, seed=this%seed*30)*this%salt*this%salt_noise
-                end if
-                rcc = taper(rcc, len=[0, nex - 1, 0, 0, 0, 0])
-
-            end block
         end if
+
+        ! Final processing
+
+        ! After fault block shifting, the model is w, while RGT is t
+        if (this%yn_facies) then
+            m = w
+        end if
+
+        ww = w
+        !$omp parallel do private(i, j, k)
+        do k = 1, n3
+            do j = 1, n2
+                do i = 1, n1 - 1
+                    w(i, j, k) = (ww(i + 1, j, k) - ww(i, j, k))/(ww(i + 1, j, k) + ww(i, j, k))
+                end do
+            end do
+        end do
+        !$omp end parallel do
+        where (f /= 0)
+            w = w*0.5
+        end where
+
+        this%image = w(ne1 + 1:ne1 + this%n1, ne2 + 1:ne2 + this%n2, ne3 + 1:ne3 + this%n3)
+        n1 = this%n1
+        n2 = this%n2
+        n3 = this%n3
 
         ! Add random noise
         if (this%noise_level /= 0 .and. this%yn_conv_noise) then
@@ -863,25 +982,6 @@ contains
             end if
             this%image = conv(this%image, this%psf, 'same')
 
-            ! The image of the salt is computed separately
-            ! This is because to let the salt image have proper amplitude
-            ! it must be scaled after computed separately.
-            ! Otherwise, there is no way to gaurantee its amplitude
-            ! is even similar to that of the reflectors
-            if (this%yn_salt) then
-                rcc = conv(rcc, this%psf, 'same')
-            end if
-
-        end if
-
-        if (this%yn_salt) then
-            this%image = this%image + return_normal(this%salt_amp*rcc/maxval(abs(rcc))*maxval(abs(this%image)))
-        end if
-
-        ! Image smooth
-        call assert(all(this%image_smooth >= 0), ' <generate_3d_geological_model> Error: image_smooth must >= 0')
-        if (any(this%image_smooth > 0)) then
-            this%image = gauss_filt(this%image, this%image_smooth)
         end if
 
         ! Add random noise
@@ -905,27 +1005,14 @@ contains
 
         if (this%yn_fault) then
             this%fault = f(ne1 + 1:ne1 + this%n1, ne2 + 1:ne2 + this%n2, ne3 + 1:ne3 + this%n3)
-            ! Fault attributes
-            this%fault_dip = this%fault
-            this%fault_strike = this%fault
-            this%fault_rake = this%fault
-            this%fault_disp = this%fault
-            do fi = 1, this%nf
-                !$omp parallel do private(i, j, k) collapse(3)
-                do k = 1, this%n3
-                    do j = 1, this%n2
-                        do i = 1, this%n1
-                            if (nint(this%fault(i, j, k)) == fi) then
-                                this%fault_dip(i, j, k) = dip(fi)*const_rad2deg
-                                this%fault_strike(i, j, k) = strike(fi)*const_rad2deg
-                                this%fault_rake(i, j, k) = rake(fi)*const_rad2deg
-                                this%fault_disp(i, j, k) = disp(fi)
-                            end if
-                        end do
-                    end do
-                end do
-                !$omp end parallel do
-            end do
+            this%fault_dip = fdip(ne1 + 1:ne1 + this%n1, ne2 + 1:ne2 + this%n2, ne3 + 1:ne3 + this%n3)*const_rad2deg
+            this%fault_strike = fstrike(ne1 + 1:ne1 + this%n1, ne2 + 1:ne2 + this%n2, ne3 + 1:ne3 + this%n3)*const_rad2deg
+            this%fault_rake = frake(ne1 + 1:ne1 + this%n1, ne2 + 1:ne2 + this%n2, ne3 + 1:ne3 + this%n3)*const_rad2deg
+            this%fault_disp = fdisp(ne1 + 1:ne1 + this%n1, ne2 + 1:ne2 + this%n2, ne3 + 1:ne3 + this%n3)
+        end if
+
+        if (this%yn_salt) then
+            this%salt = this%salt(ne1 + 1:ne1 + this%n1, ne2 + 1:ne2 + this%n2, ne3 + 1:ne3 + this%n3)
         end if
 
         if (this%yn_rgt) then
@@ -935,33 +1022,11 @@ contains
 
         if (this%yn_facies) then
             this%facies = m(ne1 + 1:ne1 + this%n1, ne2 + 1:ne2 + this%n2, ne3 + 1:ne3 + this%n3)
-            this%facies = rescale(this%facies, [this%vmin, this%vmax])
-        end if
-
-        if (this%yn_salt) then
-            this%salt = this%salt(1:this%n1, 1:this%n2, 1:this%n3)
-            !$omp parallel do private(i, j, k)
-            do k = 1, this%n3
-                do j = 1, this%n2
-                    do i = 1, this%n1
-                        if (this%salt(i, j, k) == 1) then
-                            if (this%yn_fault) then
-                                this%fault(i, j, k) = 0
-                                this%fault_dip(i, j, k) = 0
-                                this%fault_strike(i, j, k) = 0
-                                this%fault_disp(i, j, k) = 0
-                            end if
-                            if (this%yn_rgt) then
-                                this%rgt(i, j, k) = 0
-                            end if
-                            if (this%yn_facies) then
-                                this%facies(i, j, k) = this%salt_vel
-                            end if
-                        end if
-                    end do
-                end do
-            end do
-            !$omp end parallel do
+            if (this%yn_salt) then
+                this%facies = rescale(this%facies, [this%vmin, max(this%vmax, this%salt_vel)])
+            else
+                this%facies = rescale(this%facies, [this%vmin, this%vmax])
+            end if
         end if
 
         if (this%unconf > 0 .and. this%unconf_nl == 0) then
@@ -988,9 +1053,9 @@ contains
 
     subroutine generate_3d_unconformal_geological_model(this)
 
-        type(rgm3), intent(inout) :: this
+        type(rgm3_curved), intent(inout) :: this
 
-        type(rgm3), allocatable, dimension(:) :: g
+        type(rgm3_curved), allocatable, dimension(:) :: g
         integer :: iconf, i, j, k
         type(meta_array2_real), allocatable, dimension(:) :: uff
         real, allocatable, dimension(:) :: ufz, aufz
@@ -1041,6 +1106,8 @@ contains
                 g(i)%lwv = abs(g(i)%lwv/2.0)
                 g(i)%refl_height = g(i)%refl_height/2.0
                 g(i)%refl_slope = -g(i)%refl_slope/4.0
+                g(i)%refl_height_top = g(i)%refl_height_top/2.0
+                g(i)%refl_slope_top = -g(i)%refl_slope_top/4.0
             end if
 
             if (i < this%unconf + 1 .and. this%unconf_nl == 0) then
@@ -1186,5 +1253,5 @@ contains
 
     end subroutine generate_3d_unconformal_geological_model
 
-end module geological_model_3d
+end module geological_model_3d_curved
 

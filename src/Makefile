@@ -29,6 +29,8 @@ common = \
     module_geological_model_3d.o \
     module_geological_model_2d_elastic.o \
     module_geological_model_3d_elastic.o \
+    module_geological_model_2d_curved.o \
+    module_geological_model_3d_curved.o \
     module_geological_model.o
 
 objlib = $(addprefix $(objdir)/, $(common))
@@ -45,7 +47,7 @@ include $(flitdir)/src/Makefile.in
 inc = $(base_inc) -I$(flitdir)/lib
 lflags = $(flitdir)/lib/libflit.a $(base_lflags)
 fflags = $(base_fflags) \
-	#	-O0 -g -check bounds
+	# -O0 -g -check bounds
 
 # compile
 $(objdir)/%.o : $(PWD)/%.f90

@@ -19,10 +19,12 @@
 
 module librgm
 
-    use geological_model_2d
-    use geological_model_2d_elastic
-    use geological_model_3d
-    use geological_model_3d_elastic
     use geological_model_utility
+    use geological_model_2d
+    use geological_model_3d
+    use geological_model_2d_elastic
+    use geological_model_3d_elastic
+    use geological_model_2d_curved
+    use geological_model_3d_curved
 
 end module librgm

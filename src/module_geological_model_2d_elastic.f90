@@ -69,8 +69,8 @@ module geological_model_2d_elastic
         real :: facies_threshold = 0.0
         character(len=12) :: refl_amp_dist = 'normal'
         character(len=12) :: noise_type = 'normal'
-        logical :: yn_conv_noise = .true.
-        real :: secondary_refl_amp = 0.0
+        logical :: yn_conv_noise = .false.
+        real :: secondary_refl_height_ratio = 0.0
         logical :: yn_regular_fault = .false.
         real, allocatable, dimension(:) :: wave_filt_freqs, wave_filt_amps
 
@@ -139,6 +139,7 @@ contains
         real, allocatable, dimension(:) :: rt
         real, allocatable, dimension(:) :: wp, uv, ratio, lr
         integer :: nuv, nsf
+        type(fractal_noise_1d) :: pn
 
         fwidth = this%fwidth
         dt = 0.001
@@ -202,7 +203,7 @@ contains
         sumdisp = disp*sin(dip)
         ne1 = max(nint(sum(sumdisp, mask=sumdisp > 0)), -nint(sum(sumdisp, mask=sumdisp < 0)))
         ne1 = max(ne1, ceiling(abs(this%refl_slope)))
-        ne1 = ne1 + maxval(this%refl_height*(1.0 + this%secondary_refl_amp))
+        ne1 = ne1 + maxval(this%refl_height*(1.0 + this%secondary_refl_height_ratio))
         n1 = n1 + 2*ne1 + 2
         if (mod(n1, 2) == 1 .and. this%wave == 'delta') then
             n1 = n1 + 1
@@ -242,6 +243,12 @@ contains
                     r = -r
                 end if
 
+            case ('perlin')
+                pn%n1 = n2
+                pn%seed = this%seed*3
+                r = gauss_filt(pn%generate(), this%refl_smooth)
+                r = rescale(r, this%refl_height)
+
             case ('custom')
                 call assert(size(this%refl) == this%n2 - 2*ne2, &
                     '<generate_2d_geological_model> Error: size(refl) must = n2')
@@ -250,10 +257,10 @@ contains
 
         end select
 
-        if (this%secondary_refl_amp > 0) then
+        if (this%secondary_refl_height_ratio > 0) then
             sr = random(n2, dist='normal', seed=this%seed*3 - 1)
             sr = gauss_filt(sr, this%refl_smooth/5.0)
-            sr = rescale(sr, [minval(r), maxval(r)]*this%secondary_refl_amp)
+            sr = rescale(sr, [minval(r), maxval(r)]*this%secondary_refl_height_ratio)
             r = r + sr
         end if
 
@@ -509,8 +516,8 @@ contains
 
                         if ((z0 - z2)*(z2 - z1) + (x0 - x2)*(x2 - x1) >= 0) then
 
-                            newi = clip(nint(i - disp(fi)*sin(dip(fi))), 1, n1)
-                            newj = clip(nint(j + disp(fi)*cos(dip(fi))), 1, n2)
+                            newi = nint(i - disp(fi)*sin(dip(fi)))
+                            newj = nint(j + disp(fi)*cos(dip(fi)))
 
                             if (newi >= 1 .and. newi <= n1 .and. newj >= 1 .and. newj <= n2) then
                                 ! Reflectivity
@@ -809,6 +816,7 @@ contains
         real, allocatable, dimension(:, :) :: rgt_above, rgt_below
         real :: tmin, tmax
         integer, allocatable, dimension(:) :: st
+        real :: ie
 
         allocate (g(1:this%unconf + 1))
 
@@ -854,6 +862,7 @@ contains
                 g(i)%nf = 0
                 g(i)%lwv = abs(g(i)%lwv/2.0)
                 g(i)%refl_height = g(i)%refl_height/2.0
+                g(i)%refl_slope = -g(i)%refl_slope/4.0
             end if
 
             if (i < this%unconf + 1 .and. this%unconf_nl == 0) then
@@ -863,6 +872,12 @@ contains
             end if
 
             call generate_2d_geological_model_elastic(g(i))
+
+            ie = norm2(g(i)%image_pp) + norm2(g(i)%image_ps) + norm2(g(i)%image_sp) + norm2(g(i)%image_ss)
+            g(i)%image_pp = g(i)%image_pp/ie
+            g(i)%image_ps = g(i)%image_ps/ie
+            g(i)%image_sp = g(i)%image_sp/ie
+            g(i)%image_ss = g(i)%image_ss/ie
 
         end do
 
