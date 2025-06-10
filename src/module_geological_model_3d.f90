@@ -1,5 +1,5 @@
 !
-! © 2024. Triad National Security, LLC. All rights reserved.
+! © 2024-2025. Triad National Security, LLC. All rights reserved.
 !
 ! This program was produced under U.S. Government contract 89233218CNA000001
 ! for Los Alamos National Laboratory (LANL), which is operated by
@@ -76,6 +76,7 @@ module geological_model_3d
         logical :: yn_conv_noise = .false.
         real :: secondary_refl_height_ratio = 0.0
         logical :: yn_regular_fault = .false.
+        logical :: yn_group_faults = .false.
         real, allocatable, dimension(:) :: wave_filt_freqs, wave_filt_amps
 
         logical :: yn_salt = .false.
@@ -373,7 +374,7 @@ contains
             where (abs(reflf) < this%facies_threshold*maxval(abs(reflf)))
                 reflf = 0
             end where
-            imp = integ(reflf)
+            imp = cumsum(reflf)
             imp = imp - mean(imp)
 
             block
@@ -484,14 +485,20 @@ contains
                 rc = sort(rc)
                 f2 = zeros(nf)
                 f2(1) = ne2
-                f2(2:) = ne2 + integ(rc)
+                f2(2:) = ne2 + cumsum(rc)
+                if (.not. this%yn_group_faults) then
+                    f2 = random_permute(f2, seed=this%seed*12 + 1)
+                end if
 
                 rc = random(nf - 1, range=[0.75, 1.25]*(n3 - 2*ne3)/(nf - 1.0), seed=this%seed*13)
                 rc = rc*(n3 - 2*ne3)/sum(rc)
                 rc = sort(rc)
                 f3 = zeros(nf)
                 f3(1) = ne3
-                f3(2:) = ne3 + integ(rc)
+                f3(2:) = ne3 + cumsum(rc)
+                if (.not. this%yn_group_faults) then
+                    f3 = random_permute(f3, seed=this%seed*13 + 1)
+                end if
 
                 ! Rotate the points of fault centers
                 do i = 1, nf

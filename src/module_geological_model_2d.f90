@@ -1,5 +1,5 @@
 !
-! © 2024. Triad National Security, LLC. All rights reserved.
+! © 2024-2025. Triad National Security, LLC. All rights reserved.
 !
 ! This program was produced under U.S. Government contract 89233218CNA000001
 ! for Los Alamos National Laboratory (LANL), which is operated by
@@ -122,6 +122,8 @@ module geological_model_2d
         real :: secondary_refl_height_ratio = 0.0
         !> Set faults to be with (quasi) regular spacing and dips
         logical :: yn_regular_fault = .false.
+        !> For regularly spaced faults, whether to group faults with distinct dips into a group in space
+        logical :: yn_group_faults = .false.
         !> Source wavelet filtering frequencies and coefficients, e.g.,
         !> amps = [0, 1, 1, 0] and freqs = [0, 10, 30, 40]
         !> is a band-pass filtering of 0, 10, 30, 40 Hz.
@@ -362,7 +364,7 @@ contains
             where (abs(reflf) < this%facies_threshold*maxval(abs(reflf)))
                 reflf = 0
             end where
-            imp = integ(reflf)
+            imp = cumsum(reflf)
             imp = imp - mean(imp)
 
             block
@@ -520,7 +522,10 @@ contains
                 rc = sort(rc)
                 f2 = zeros(nf)
                 f2(1) = ne2
-                f2(2:) = ne2 + integ(rc)
+                f2(2:) = ne2 + cumsum(rc)
+                if (.not. this%yn_group_faults) then
+                    f2 = random_permute(f2, seed=this%seed*12 + 1)
+                end if
 
             else
 
