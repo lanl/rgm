@@ -44,7 +44,7 @@ program test
         p%lwv = 0.1
         p%dip = [rand(range=[100.0, 120.0], seed=123), rand(range=[60.0, 80.0], seed=567)]
         p%disp = [10.0, -10.0]
-        p%secondary_refl_amp = 0.1
+        p%secondary_refl_height_ratio = 0.1
         p%refl_smooth = 10.0
         p%yn_facies = .true.
         p%yn_rgt = .true.
@@ -67,7 +67,7 @@ program test
         p%disp = [10, 20]
         p%lwv = 0.1
         p%dip = [rand(range=[100.0, 120.0], seed=123), rand(range=[60.0, 80.0], seed=567)]
-        p%secondary_refl_amp = 0.05
+        p%secondary_refl_height_ratio = 0.05
         p%refl_smooth = 20.0
         p%yn_facies = .true.
         p%yn_rgt = .true.
@@ -85,8 +85,6 @@ program test
         call output_array(p%image, './model/img2_2.bin')
 
     end block
-
-    stop
 
     block
 
@@ -113,7 +111,7 @@ program test
         p%dip = [rand(range=[100.0, 120.0], seed=123), rand(range=[60.0, 80.0], seed=567)]
         p%strike = [rand(range=[100.0, 120.0], seed=123), rand(range=[160.0, 180.0], seed=567)]
         p%disp = [10.0, -10.0]
-        p%secondary_refl_amp = 0.1
+        p%secondary_refl_height_ratio = 0.1
         p%refl_smooth = 10.0
         p%yn_facies = .true.
         p%yn_rgt = .true.
@@ -136,7 +134,7 @@ program test
         p%unconf_z = 0.25
         p%disp = [10, 20]
         p%lwv = 0.1
-        p%secondary_refl_amp = 0.1
+        p%secondary_refl_height_ratio = 0.1
         p%refl_smooth = 10.0
         p%yn_facies = .true.
         p%yn_rgt = .true.

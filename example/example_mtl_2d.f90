@@ -84,7 +84,7 @@ program main
         p%refl_slope = slope(i)
         p%nl = nl(i)
         p%refl_amp = [0.1, 1.0]
-        p%secondary_refl_amp = sr(i)
+        p%secondary_refl_height_ratio = sr(i)
         p%fwidth = 3.0
 
         if (mod(i, 4) == 0) then

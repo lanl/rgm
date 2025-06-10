@@ -64,14 +64,14 @@ program main
             p%ng = irand(range=[2, 6])
             p%refl_height = [0.0, height2(i)]
             p%lwv = lwv2(i)
-            p%secondary_refl_amp = rand(range=[0.0, 0.2])
+            p%secondary_refl_height_ratio = rand(range=[0.0, 0.2])
 
         else
             p%refl_shape = 'random'
             p%refl_smooth = 25
             p%refl_height = [0.0, height(i)]
             p%lwv = lwv(i)
-            p%secondary_refl_amp = rand(range=[0.0, 0.2])
+            p%secondary_refl_height_ratio = rand(range=[0.0, 0.2])
         end if
         select case (mod(irand(range=[1, nm]), 3))
             case (0)

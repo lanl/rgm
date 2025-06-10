@@ -60,7 +60,6 @@ program main
         p%f0 = fs(i)
         p%nl = nl(i)
         p%refl_amp = [0.1, 1.0]
-        p%secondary_refl_amp = rand(range=[0.0, 0.2])
         if (mod(irand(range=[1, nm]), 2) == 0) then
             p%refl_shape = 'gaussian'
             p%refl_mu2 = [0.0, p%n2 - 1.0]
@@ -69,13 +68,14 @@ program main
             p%refl_sigma3 = [25.0, 50.0]
             p%ng = irand(range=[2, 4])
             p%refl_height = [0.0, height2(i)]
+            p%secondary_refl_height_ratio = rand(range=[0.0, 0.2])
             p%lwv = lwv2(i)
         else
             p%refl_shape = 'random'
             p%refl_smooth = smooth(i)
             p%refl_height = [0.0, height(i)]
             p%lwv = lwv(i)
-            p%secondary_refl_amp = rand(range=[0.0, 0.2])
+            p%secondary_refl_height_ratio = rand(range=[0.0, 0.2])
         end if
 
         select case (mod(irand(range=[1, nm]), 3))
