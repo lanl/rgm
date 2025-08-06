@@ -1,5 +1,5 @@
 #
-# © 2024. Triad National Security, LLC. All rights reserved.
+# © 2024-2025. Triad National Security, LLC. All rights reserved.
 #
 # This program was produced under U.S. Government contract 89233218CNA000001
 # for Los Alamos National Laboratory (LANL), which is operated by
@@ -41,7 +41,7 @@ lib = $(moddir)/librgm.a
 all: makedir $(lib)
 
 # options
-flitdir = $(HOME)/src/libflit
+flitdir = $(HOME)/src/flit
 
 include $(flitdir)/src/Makefile.in
 inc = $(base_inc) -I$(flitdir)/lib

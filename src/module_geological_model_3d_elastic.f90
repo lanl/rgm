@@ -302,9 +302,8 @@ contains
 
                 r = zeros(n2, n3)
                 do i = 1, this%ng
-                    r = r + rescale(gaussian([mu2(i) + ne2, mu3(i) + ne3], &
-                        [sigma2(i), sigma3(i)], &
-                        linspace(0.0, n2 - 1.0, n2), linspace(0.0, n3 - 1.0, n3)), [0.0, height(i)])
+                    r = r + rescale(gaussian(linspace(0.0, n2 - 1.0, n2), linspace(0.0, n3 - 1.0, n3), &
+                        [mu2(i) + ne2, mu3(i) + ne3], [sigma2(i), sigma3(i)]), [0.0, height(i)])
                 end do
                 if (this%lwv >= 0) then
                     r = -r
@@ -854,7 +853,6 @@ contains
         end if
 
         wavelet = zeros(n1)
-        f0 = this%f0
         !$omp parallel do private(i, wt)
         do i = 1, n1
             wt = (i - 1.0 - (n1 - 1.0)/2.0)*dt

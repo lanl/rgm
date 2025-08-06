@@ -1,4 +1,6 @@
 
+system "mkdir -p figures"
+
 opts = "-label1='' -label2='' -ticktop=n -color=rainbowcmyk -tickbottom=n -tickleft=n -tickright=n "
 
 system "x_showmatrix -in=model/vp2_1.bin -n1=400 #{opts} -out=figures/9.png &"

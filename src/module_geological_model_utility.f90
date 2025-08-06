@@ -38,12 +38,25 @@ module geological_model_utility
         module procedure :: random_mask_smooth_3d
     end interface
 
+    ! Fractal noise (multi-octave Perlin noise)
+    ! See https://we.copernicus.org/articles/22/1/2022/
     type fractal_noise_1d
+        ! Number of grid points
         integer :: n1
-        integer :: res1 = 5
+        ! Number of periods
+        integer :: periods1 = 5
+        ! Randomness seed
         integer :: seed = -1
+        ! Number of octaves
         integer :: octaves = 5
+        ! Weight for decaying as persistence^i P_i(x), in the range (0, 1]
         real :: persistence = 0.5
+        ! In a fractal, fills space, higher lacunarity indicating more or larger gaps.
+        ! In the context of Perlin noise the lacunarity parameter is a multiplier that
+        ! determines the rate of change in the number of periods between successive waves.
+        ! For example, when lacunarity = 2, then the number of periods doubles for
+        ! each successive wave (Fig. 1a to c), or when lacunarity = 4,
+        ! then the number of periods quadruples for each successive wave.
         real :: lacunarity = 2.0
     contains
         procedure, public :: generate => generate_fractal_noise_1d
@@ -51,8 +64,8 @@ module geological_model_utility
 
     type fractal_noise_2d
         integer :: n1, n2
-        integer :: res1 = 5
-        integer :: res2 = 5
+        integer :: periods1 = 5
+        integer :: periods2 = 5
         integer :: seed = -1
         integer :: octaves = 5
         real :: persistence = 0.5
@@ -63,9 +76,9 @@ module geological_model_utility
 
     type fractal_noise_3d
         integer :: n1, n2, n3
-        integer :: res1 = 5
-        integer :: res2 = 5
-        integer :: res3 = 5
+        integer :: periods1 = 5
+        integer :: periods2 = 5
+        integer :: periods3 = 5
         integer :: seed = -1
         integer :: octaves = 5
         real :: persistence = 0.5
@@ -89,8 +102,33 @@ module geological_model_utility
     public :: fractal_noise_3d
     public :: elastic_reflection_coefs
     public :: random_mask_smooth
+    public :: random_circular
 
 contains
+
+    function random_circular(n, r, dr, alpha, smooth, seed) result(m)
+
+        integer :: n
+        real :: r, dr, alpha, smooth
+        integer, optional :: seed
+        real, allocatable, dimension(:) :: m
+
+        real, allocatable, dimension(:) :: wk
+
+        if (present(seed)) then
+            m = random(n, range=[0.0, 2*real(const_pi)], seed=seed)
+        else
+            m = random(n, range=[0.0, 2*real(const_pi)])
+        end if
+
+        wk = fft_omega(n, 1.0)
+        m = ifft(exp(const_i*m)/sqrt(1.0/(alpha*n)**2 + wk**2)*exp(-wk**2*smooth), real=.true.)
+
+        m = m - mean(m)
+        m = m/maxval(abs(m))*dr + r
+
+    end function random_circular
+
 
     function sinc_wavelet(t, f0) result(wavelet)
 
@@ -476,69 +514,49 @@ contains
     end function fade
 
     !
-    ! Compute 1D gradient dot product
+    ! Linear interpolation
     !
-    function gradient_1d(perm, x0, x) result(dot)
+    pure function lerp(a, b, t) result(s)
 
-        integer, intent(in), dimension(:) :: perm
-        integer, intent(in) :: x0
-        real, intent(in) :: x
-        real :: dot
-        integer :: h
-        real :: gradient
+        real, intent(in) :: a, b, t
+        real :: s
 
-        ! Compute hash value from permutation table
-        h = perm(mod(x0, 256))
+        s = a + t*(b - a)
 
-        ! Select gradient based on hash (either +1 or -1)
-        if (mod(h, 2) == 0) then
-            gradient = 1.0
-        else
-            gradient = -1.0
-        end if
-
-        ! Compute dot product: gradient * relative position
-        dot = gradient*(x - x0)
-
-    end function gradient_1d
+    end function lerp
 
     !
     ! Generate 1D Perlin noise
     !
-    function perlin_1d(res, nx, seed) result(noise)
+    function perlin_1d(periodx, nx, seed) result(noise)
 
-        real, intent(in) :: res
+        real, intent(in) :: periodx
         integer, intent(in) :: nx, seed
         real, allocatable, dimension(:) :: noise
         real, allocatable, dimension(:) :: x
-        integer :: perm(0:255), x0, x1, i
-        real :: sx, n0, n1
+        integer :: x0, x1, i
+        real, allocatable, dimension(:) :: gd
+        real :: sx, g0, g1, dx
 
-        ! Allocate noise array and coordinate array
-        allocate (noise(nx))
-        allocate (x(nx))
+        noise = zeros(nx)
+        x = regspace(0.0, 1.0, nx - 1.0)/nx*periodx
 
-        ! Generate coordinates scaled by res
-        x = [(i/real(nx - 1), i=0, nx - 1)]*res
+        gd = random_permute(binarize(random(ceiling(periodx) + 1, seed=seed), 0.5, [-1.0, 1.0]), seed=seed + 1)
 
-        ! Initialize permutation table
-        perm = random_permute(regspace(0, 1, 255), seed=seed)
-
-        ! Compute Perlin noise
-        !$omp parallel do private(i, x0, x1, sx, n0, n1)
+        !$omp parallel do private(i, x0, x1, dx, g0, g1, sx)
         do i = 1, nx
 
-            x0 = floor(x(i))
+            x0 = floor(x(i)) + 1
             x1 = x0 + 1
 
-            sx = fade(x(i) - x0)
+            dx = x(i) - (x0 - 1.0)
 
-            ! Compute gradients and dot products at the two corners
-            n0 = gradient_1d(perm, x0, x(i))
-            n1 = gradient_1d(perm, x1, x(i))
+            g0 = gd(x0)*dx
+            g1 = gd(x1)*(dx - 1.0)
 
-            ! Interpolate between the two values
-            noise(i) = (1.0 - sx)*n0 + sx*n1
+            sx = fade(dx)
+
+            noise(i) = lerp(g0, g1, sx)
 
         end do
         !$omp end parallel do
@@ -552,7 +570,7 @@ contains
 
         class(fractal_noise_1d), intent(in) :: this
 
-        integer :: n1, res, seed, octaves
+        integer :: n1, period1, seed, octaves
         real :: persistence, lacunarity
         real, allocatable, dimension(:) :: fractal_noise
         real, allocatable, dimension(:) :: noise
@@ -560,13 +578,13 @@ contains
         integer :: octave, nx, grid_check
 
         n1 = this%n1
-        res = this%res1
+        period1 = this%periods1
         seed = this%seed*20
         octaves = this%octaves
         persistence = this%persistence
         lacunarity = this%lacunarity
 
-        grid_check = floor(lacunarity**(octaves - 1)*res)
+        grid_check = floor(lacunarity**(octaves - 1)*period1)
         nx = ceiling(n1*1.0/grid_check)*grid_check
 
         ! Allocate fractal noise array
@@ -580,7 +598,7 @@ contains
         do octave = 1, octaves
 
             ! Generate Perlin noise for the current octave
-            noise = perlin_1d(res*frequency, nx, seed + octave)
+            noise = perlin_1d(period1*frequency, nx, seed + octave)
 
             ! Add the current octave to the fractal noise
             fractal_noise = fractal_noise + amplitude*noise
@@ -591,93 +609,66 @@ contains
 
         end do
 
-        ! Normalize fractal noise to [0, 1]
+        ! Normalize fractal noise
         fractal_noise = fractal_noise(1:n1)
         fractal_noise = (fractal_noise - mean(fractal_noise))/std(fractal_noise)
 
     end function generate_fractal_noise_1d
 
     !
-    ! Compute 2D gradient dot product
-    !
-    pure function gradient_2d(hash, x, y) result(dot)
-
-        integer, intent(in) :: hash
-        real, intent(in) :: x, y
-        real :: dot
-        real, dimension(4, 2) :: gradients
-        integer :: h
-
-        ! Gradients for Perlin noise (limited set of vectors)
-        gradients = reshape([ &
-            0.0, 1.0, &
-            0.0, -1.0, &
-            1.0, 0.0, &
-            -1.0, 0.0], [4, 2])
-
-        ! Ensure index is between 1 and 4
-        h = mod(hash, 4) + 1
-
-        ! Dot product of gradient vector with relative position
-        dot = gradients(h, 1)*x + gradients(h, 2)*y
-
-    end function gradient_2d
-
-    !
     ! Generate 2D Perlin noise
     !
-    function perlin_2d(res_x, res_y, nx, ny, seed) result(noise)
+    function perlin_2d(periodx, periody, nx, ny, seed) result(noise)
 
-        real, intent(in) :: res_x, res_y
+        real, intent(in) :: periodx, periody
         integer, intent(in) :: nx, ny, seed
         real, allocatable, dimension(:, :) :: noise
         integer :: x0, x1, y0, y1, i, j
-        real :: sx, sy, u, v, n0, n1
+        real :: sx, sy, g00, g01, g10, g11, dx, dy
+        integer :: mx, my
         real, allocatable, dimension(:) :: x, y
-        integer, allocatable, dimension(:, :) :: permutation_table
-        integer, allocatable, dimension(:) :: perm
+        real, allocatable, dimension(:, :, :) :: gd
+        real, allocatable, dimension(:, :) :: r
 
-        ! Allocate noise array and coordinate arrays
-        allocate (noise(nx, ny))
-        allocate (x(nx))
-        allocate (y(ny))
+        noise = zeros(nx, ny)
+        x = regspace(0.0, 1.0, nx - 1.0)/nx*periodx
+        y = regspace(0.0, 1.0, ny - 1.0)/ny*periody
 
-        ! Generate coordinates scaled by res
-        x = [(i/real(nx - 1), i=0, nx - 1)]*res_x
-        y = [(j/real(ny - 1), j=0, ny - 1)]*res_y
+        mx = ceiling(periodx) + 1
+        my = ceiling(periody) + 1
+        r = random(mx, my, seed=seed)*2*const_pi
+        gd = zeros(mx, my, 2)
 
-        ! Initialize permutation table
-        perm = random_permute(regspace(0, 1, 255), seed=seed)
-
-        allocate (permutation_table(0:255, 0:255))
-        do i = 0, 255
-            do j = 0, 255
-                permutation_table(i, j) = mod(perm(mod(i + perm(j), 256)), 4)
+        !$omp parallel do private(i, j)
+        do j = 1, my
+            do i = 1, mx
+                gd(i, j, 1) = cos(r(i, j))
+                gd(i, j, 2) = sin(r(i, j))
             end do
         end do
+        !$omp end parallel do
 
-        ! Compute Perlin noise
-        !$omp parallel do private(i, j, x0, x1, y0, y1, sx, sy, n0, n1, u, v)
+        !$omp parallel do private(i, j, x0, x1, y0, y1, dx, dy, g00, g01, g10, g11, sx, sy)
         do j = 1, ny
             do i = 1, nx
 
-                x0 = floor(x(i))
+                x0 = floor(x(i)) + 1
                 x1 = x0 + 1
-                y0 = floor(y(j))
+                y0 = floor(y(j)) + 1
                 y1 = y0 + 1
 
-                sx = fade(x(i) - x0)
-                sy = fade(y(j) - y0)
+                dx = x(i) - (x0 - 1.0)
+                dy = y(j) - (y0 - 1.0)
 
-                n0 = gradient_2d(permutation_table(mod(x0, 256), mod(y0, 256)), x(i) - x0, y(j) - y0)
-                n1 = gradient_2d(permutation_table(mod(x1, 256), mod(y0, 256)), x(i) - x1, y(j) - y0)
-                u = (1.0 - sx)*n0 + sx*n1
+                g00 = gd(x0, y0, 1)*dx         + gd(x0, y0, 2)*dy
+                g01 = gd(x0, y1, 1)*dx         + gd(x0, y1, 2)*(dy - 1.0)
+                g10 = gd(x1, y0, 1)*(dx - 1.0) + gd(x1, y0, 2)*dy
+                g11 = gd(x1, y1, 1)*(dx - 1.0) + gd(x1, y1, 2)*(dy - 1.0)
 
-                n0 = gradient_2d(permutation_table(mod(x0, 256), mod(y1, 256)), x(i) - x0, y(j) - y1)
-                n1 = gradient_2d(permutation_table(mod(x1, 256), mod(y1, 256)), x(i) - x1, y(j) - y1)
-                v = (1.0 - sx)*n0 + sx*n1
+                sx = fade(dx)
+                sy = fade(dy)
 
-                noise(i, j) = (1.0 - sy)*u + sy*v
+                noise(i, j) = lerp(lerp(g00, g10, sx), lerp(g01, g11, sx), sy)
 
             end do
         end do
@@ -692,7 +683,7 @@ contains
 
         class(fractal_noise_2d), intent(in) :: this
 
-        integer :: n1, n2, res_x, res_y, seed, octaves
+        integer :: n1, n2, periods1, periods2, seed, octaves
         real :: persistence, lacunarity
         real, allocatable, dimension(:, :) :: fractal_noise
         real, allocatable, dimension(:, :) :: noise
@@ -702,17 +693,17 @@ contains
 
         n1 = this%n1
         n2 = this%n2
-        res_x = this%res1
-        res_y = this%res2
+        periods1 = this%periods1
+        periods2 = this%periods2
         seed = this%seed*20
         octaves = this%octaves
         persistence = this%persistence
         lacunarity = this%lacunarity
 
-        grid_check = floor(lacunarity**(octaves - 1)*res_x)
+        grid_check = floor(lacunarity**(octaves - 1)*periods1)
         nx = ceiling(n1*1.0/grid_check)*grid_check
 
-        grid_check = floor(lacunarity**(octaves - 1)*res_y)
+        grid_check = floor(lacunarity**(octaves - 1)*periods2)
         ny = ceiling(n2*1.0/grid_check)*grid_check
 
         ! Initialize the fractal noise array
@@ -726,7 +717,7 @@ contains
         do octave = 1, octaves
 
             ! Generate Perlin noise for the current octave
-            noise = perlin_2d(res_x*frequency, res_y*frequency, nx, ny, seed + octave)
+            noise = perlin_2d(periods1*frequency, periods2*frequency, nx, ny, seed + octave)
 
             ! Add the current octave to the fractal noise
             fractal_noise = fractal_noise + amplitude*noise
@@ -744,111 +735,78 @@ contains
     end function generate_fractal_noise_2d
 
     !
-    ! Compute 3D gradient dot product
-    !
-    pure function gradient_3d(perm, gradients, x0, y0, z0, x, y, z) result(dot)
-
-        integer, intent(in), dimension(:) :: perm
-        real, intent(in), dimension(:, :) :: gradients
-        integer, intent(in) :: x0, y0, z0
-        real, intent(in) :: x, y, z
-        real :: dot
-        integer :: h
-
-        ! Compute hash value from permutation table
-        h = perm(mod(x0 + perm(mod(y0 + perm(mod(z0, 256)), 256)), 256))
-        h = mod(h, 12) + 1
-
-        ! Dot product of gradient vector with relative position
-        dot = gradients(h, 1)*(x - x0) + gradients(h, 2)*(y - y0) + gradients(h, 3)*(z - z0)
-
-    end function gradient_3d
-
-    !
     ! Generate 3D Perlin noise
     !
-    function perlin_3d(res_x, res_y, res_z, nx, ny, nz, seed) result(noise)
+    function perlin_3d(periodx, periody, periodz, nx, ny, nz, seed) result(noise)
 
-        real, intent(in) :: res_x, res_y, res_z
+        real, intent(in) :: periodx, periody, periodz
         integer, intent(in) :: nx, ny, nz, seed
         real, allocatable, dimension(:, :, :) :: noise
+
         integer :: x0, x1, y0, y1, z0, z1, i, j, k
-        real :: sx, sy, sz, n000, n100, n010, n110, n001, n101, n011, n111
-        real :: nx00, nx10, nx01, nx11, nxy0, nxy1
+        real :: sx, sy, sz, g000, g001, g010, g011, g100, g101, g110, g111, dx, dy, dz
+        integer :: mx, my, mz
         real, allocatable, dimension(:) :: x, y, z
-        integer, allocatable, dimension(:) :: perm
-        real, dimension(12, 3) :: gradients
+        real, allocatable, dimension(:, :, :, :) :: gd
+        real, allocatable, dimension(:, :, :) :: r, t
 
-        ! Gradients for Perlin noise (12 predefined unit vectors in 3D)
-        gradients = reshape([ &
-            1.0, 1.0, 0.0, &
-            -1.0, 1.0, 0.0, &
-            1.0, -1.0, 0.0, &
-            -1.0, -1.0, 0.0, &
-            1.0, 0.0, 1.0, &
-            -1.0, 0.0, 1.0, &
-            1.0, 0.0, -1.0, &
-            -1.0, 0.0, -1.0, &
-            0.0, 1.0, 1.0, &
-            0.0, -1.0, 1.0, &
-            0.0, 1.0, -1.0, &
-            0.0, -1.0, -1.0], [12, 3])
+        noise = zeros(nx, ny, nz)
+        x = regspace(0.0, 1.0, nx - 1.0)/nx*periodx
+        y = regspace(0.0, 1.0, ny - 1.0)/ny*periody
+        z = regspace(0.0, 1.0, nz - 1.0)/nz*periodz
 
-        ! Allocate noise array and coordinate arrays
-        allocate (noise(nx, ny, nz))
-        allocate (x(nx))
-        allocate (y(ny))
-        allocate (z(nz))
-        allocate (perm(0:255))
+        mx = ceiling(periodx) + 1
+        my = ceiling(periody) + 1
+        mz = ceiling(periodz) + 1
+        r = random(mx, my, mz, seed=seed)*const_pi
+        t = random(mx, my, mz, seed=seed*2)*2*const_pi
+        gd = zeros(mx, my, mz, 3)
 
-        ! Initialize coordinates scaled by res
-        x = [(i/real(nx - 1), i=0, nx - 1)]*res_x
-        y = [(j/real(ny - 1), j=0, ny - 1)]*res_y
-        z = [(k/real(nz - 1), k=0, nz - 1)]*res_z
+        !$omp parallel do private(i, j, k)
+        do k = 1, mz
+            do j = 1, my
+                do i = 1, mx
+                    gd(i, j, k, 1) = sin(r(i, j, k))*cos(t(i, j, k))
+                    gd(i, j, k, 2) = sin(r(i, j, k))*sin(t(i, j, k))
+                    gd(i, j, k, 3) = cos(r(i, j, k))
+                end do
+            end do
+        end do
+        !$omp end parallel do
 
-        ! Initialize permutation table
-        perm = random_permute(regspace(0, 1, 255), seed=seed)
-
-        ! Compute Perlin noise
-        !$omp parallel do private(i, j, k, x0, x1, y0, y1, z0, z1, sx, sy, sz, &
-            !$omp & n000, n100, n010, n110, n001, n101, n011, n111, nx00, nx10, nx01, nx11, nxy0, nxy1)
+        !$omp parallel do private(i, j, k, x0, x1, y0, y1, z0, z1, dx, dy, dz, &
+            !$omp   g000, g001, g010, g011, g100, g101, g110, g111, sx, sy, sz)
         do k = 1, nz
             do j = 1, ny
                 do i = 1, nx
 
-                    x0 = floor(x(i))
+                    x0 = floor(x(i)) + 1
                     x1 = x0 + 1
-                    y0 = floor(y(j))
+                    y0 = floor(y(j)) + 1
                     y1 = y0 + 1
-                    z0 = floor(z(k))
+                    z0 = floor(z(k)) + 1
                     z1 = z0 + 1
 
-                    sx = fade(x(i) - x0)
-                    sy = fade(y(j) - y0)
-                    sz = fade(z(k) - z0)
+                    dx = x(i) - (x0 - 1.0)
+                    dy = y(j) - (y0 - 1.0)
+                    dz = z(k) - (z0 - 1.0)
 
-                    ! Compute gradients and dot products at the 8 cube corners
-                    n000 = gradient_3d(perm, gradients, x0, y0, z0, x(i), y(j), z(k))
-                    n100 = gradient_3d(perm, gradients, x1, y0, z0, x(i), y(j), z(k))
-                    n010 = gradient_3d(perm, gradients, x0, y1, z0, x(i), y(j), z(k))
-                    n110 = gradient_3d(perm, gradients, x1, y1, z0, x(i), y(j), z(k))
-                    n001 = gradient_3d(perm, gradients, x0, y0, z1, x(i), y(j), z(k))
-                    n101 = gradient_3d(perm, gradients, x1, y0, z1, x(i), y(j), z(k))
-                    n011 = gradient_3d(perm, gradients, x0, y1, z1, x(i), y(j), z(k))
-                    n111 = gradient_3d(perm, gradients, x1, y1, z1, x(i), y(j), z(k))
+                    g000 = gd(x0, y0, z0, 1)*dx         + gd(x0, y0, z0, 2)*dy         + gd(x0, y0, z0, 3)*dz
+                    g001 = gd(x0, y0, z1, 1)*dx         + gd(x0, y0, z1, 2)*dy         + gd(x0, y0, z1, 3)*(dz - 1.0)
+                    g010 = gd(x0, y1, z0, 1)*dx         + gd(x0, y1, z0, 2)*(dy - 1.0) + gd(x0, y1, z0, 3)*dz
+                    g011 = gd(x0, y1, z1, 1)*dx         + gd(x0, y1, z1, 2)*(dy - 1.0) + gd(x0, y1, z1, 3)*(dz - 1.0)
+                    g100 = gd(x1, y0, z0, 1)*(dx - 1.0) + gd(x1, y0, z0, 2)*dy         + gd(x1, y0, z0, 3)*dz
+                    g101 = gd(x1, y0, z1, 1)*(dx - 1.0) + gd(x1, y0, z1, 2)*dy         + gd(x1, y0, z1, 3)*(dz - 1.0)
+                    g110 = gd(x1, y1, z0, 1)*(dx - 1.0) + gd(x1, y1, z0, 2)*(dy - 1.0) + gd(x1, y1, z0, 3)*dz
+                    g111 = gd(x1, y1, z1, 1)*(dx - 1.0) + gd(x1, y1, z1, 2)*(dy - 1.0) + gd(x1, y1, z1, 3)*(dz - 1.0)
 
-                    ! Interpolate along x-axis
-                    nx00 = (1.0 - sx)*n000 + sx*n100
-                    nx10 = (1.0 - sx)*n010 + sx*n110
-                    nx01 = (1.0 - sx)*n001 + sx*n101
-                    nx11 = (1.0 - sx)*n011 + sx*n111
+                    sx = fade(dx)
+                    sy = fade(dy)
+                    sz = fade(dz)
 
-                    ! Interpolate along y-axis
-                    nxy0 = (1.0 - sy)*nx00 + sy*nx10
-                    nxy1 = (1.0 - sy)*nx01 + sy*nx11
-
-                    ! Interpolate along z-axis
-                    noise(i, j, k) = (1.0 - sz)*nxy0 + sz*nxy1
+                    noise(i, j, k) = lerp( &
+                        lerp(lerp(g000, g100, sx), lerp(g010, g110, sx), sy), &
+                        lerp(lerp(g001, g101, sx), lerp(g011, g111, sx), sy), sz)
 
                 end do
             end do
@@ -864,7 +822,7 @@ contains
 
         class(fractal_noise_3d), intent(in) :: this
 
-        integer :: n1, n2, n3, res_x, res_y, res_z, seed, octaves
+        integer :: n1, n2, n3, periods1, periods2, periods3, seed, octaves
         real :: persistence, lacunarity
         real, allocatable, dimension(:, :, :) :: fractal_noise
         real, allocatable, dimension(:, :, :) :: noise
@@ -875,21 +833,21 @@ contains
         n1 = this%n1
         n2 = this%n2
         n3 = this%n3
-        res_x = this%res1
-        res_y = this%res2
-        res_z = this%res3
+        periods1 = this%periods1
+        periods2 = this%periods2
+        periods3 = this%periods3
         seed = this%seed*20
         octaves = this%octaves
         persistence = this%persistence
         lacunarity = this%lacunarity
 
-        grid_check = floor(lacunarity**(octaves - 1)*res_x)
+        grid_check = floor(lacunarity**(octaves - 1)*periods1)
         nx = ceiling(n1*1.0/grid_check)*grid_check
 
-        grid_check = floor(lacunarity**(octaves - 1)*res_y)
+        grid_check = floor(lacunarity**(octaves - 1)*periods2)
         ny = ceiling(n2*1.0/grid_check)*grid_check
 
-        grid_check = floor(lacunarity**(octaves - 1)*res_z)
+        grid_check = floor(lacunarity**(octaves - 1)*periods3)
         nz = ceiling(n3*1.0/grid_check)*grid_check
 
         ! Initialize the fractal noise array
@@ -903,7 +861,7 @@ contains
         do octave = 1, octaves
 
             ! Generate Perlin noise for the current octave
-            noise = perlin_3d(res_x*frequency, res_y*frequency, res_z*frequency, nx, ny, nz, seed + octave)
+            noise = perlin_3d(periods1*frequency, periods2*frequency, periods3*frequency, nx, ny, nz, seed + octave)
 
             ! Add the current octave to the fractal noise
             fractal_noise = fractal_noise + amplitude*noise

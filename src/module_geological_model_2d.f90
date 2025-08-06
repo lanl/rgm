@@ -294,7 +294,7 @@ contains
 
                 r = zeros(n2)
                 do i = 1, this%ng
-                    r = r + rescale(gaussian(mu(i) + ne2, sigma(i), linspace(0.0, n2 - 1.0, n2)), [0.0, height(i)])
+                    r = r + rescale(gaussian(linspace(0.0, n2 - 1.0, n2), mu(i) + ne2, sigma(i)), [0.0, height(i)])
                 end do
                 if (this%lwv >= 0) then
                     r = -r
