@@ -1459,14 +1459,16 @@ contains
 
         end do
 
-        where (this%salt == 1)
-            this%vp = this%salt_vp
-            this%rho = this%salt_rho
-        end where
-        if (this%yn_elastic) then
+        if (this%yn_salt) then
             where (this%salt == 1)
-                this%vs = this%salt_vs
+                this%vp = this%salt_vp
+                this%rho = this%salt_rho
             end where
+            if (this%yn_elastic) then
+                where (this%salt == 1)
+                    this%vs = this%salt_vs
+                end where
+            end if
         end if
 
         vp = this%vp
