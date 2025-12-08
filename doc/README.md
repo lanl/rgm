@@ -17,7 +17,7 @@ Installation of `RGM` is straightforward:
 git clone https://github.com/lanl/rgm.git
 cd rgm
 cd src
-ruby install.rb
+make
 ```
 
 You need to install [`FLIT`](https://github.com/lanl/flit) before installing `RGM`. 
