@@ -20,12 +20,12 @@ cd src
 make
 ```
 
-You need to install [`FLIT`](https://github.com/lanl/flit) before installing `RGM`. 
+You need to install [`FLIT`](https://github.com/lanl/flit) before installing `RGM`, and set the path `flitdir = ...` in the [Makefile](https://github.com/lanl/rgm/tree/main/src/Makefile). 
 
 
 ## Parameters
 
-Below is an incomplete list of important parameters for using `RGM`. For complete list, please refer to the codes. 
+Below is an incomplete list of important parameters for using `RGM` to generate random geological models. 
 
 Here, I use `m` to represent a `rgm2_curved` or `rgm3_curved` class, i.e., 
 ```fortran
@@ -37,8 +37,11 @@ or
 ```
 
 ### Randomness
+
+The random geological model generation process contains multiple steps and components (e.g., number of faults, layer shapes, fault geometry attributes, etc.), and each of these steps and components can be randomized through some parameters. 
+
 > **`seed` (integer)** 
-- **Description**: Seed for controlling ranodmness reproducibility. By defualt, `m%seed = -1`, menaing that every time the resulting random model will be different. For a value that is not `-1` (e.g., `m%seed = 123`), all randomness is reproducible and the resulting random model will be same over different realizations. 
+- **Description**: Seed for controlling ranodmness reproducibility. By defualt, `m%seed = -1`, meaning that every time the generated random model is different. For a value that is not `-1` (e.g., `m%seed = 123`), all randomness is reproducible and the resulting random model will be same over different realizations at different times. 
 - **Default**: `-1`
 
 ### Dimension
@@ -54,10 +57,18 @@ or
 - **Description**: Number of grid points along axis-3 of the generated random model.
 - **Default**: `128`
 
+For instance, the user can set
+```fortran
+    m%n1 = 128
+    m%n2 = 256
+    m%n3 = 256
+```
+to generate random geological models with a size of `(n1, n2, n3) = (128, 256, 256)`. 
+
 ### Layer and reflectors
 
 > **`nl` (integer)** 
-- **Description**: Number of layers. Note that due to the algorithm limitation, the resulting model may not have exactly `nl` layers, but should be very close in most cases. 
+- **Description**: Number of layers. Note that due to the limitation of the current algorithm, the resulting model may not have exactly `nl` layers, but should be very close in most cases. 
 - **Default**: `20`
 
 > **`refl_height` (real, dimension(1:2))** 
@@ -83,6 +94,16 @@ or
 > **`refl_shape_top` (character(len=24))**
 - **Description**: Shape of the top reflectors. Valid options are `random`, `gaussian`, `cauchy`, `perlin`, and `custom`. In between the top and the bottom reflectors, the shapes of the reflectors will be interpolated depending on depth. 
 - **Default**: `random`
+
+To use `custom` reflector shapes, the user must provide the following arrays:
+
+> **`refl` (real, allocatable, dimension(:, :))** 
+- **Description**: A 2D array (or 1D array in the 2D case) storing the shape of the bottom reflector shape. Its size must be `(n2, n3)` for 3D and `n2` in 2D. 
+- **Default**: `None`
+
+> **`refl_top` (real, allocatable, dimension(:, :))** 
+- **Description**: A 2D array (or 1D array in the 2D case) storing the shape of the top reflector shape. Its size must be `(n2, n3)` for 3D and `n2` in 2D. 
+- **Default**: `None`
 
 ### Fault
 
@@ -211,8 +232,7 @@ real, dimension(1:2) :: refl_slope_top = [0.0, 0.0]
 real, dimension(1:3) :: noise_smooth = [1.0, 1.0, 1.0]
 real :: noise_level = 0.05
 character(len=24) :: wave = 'ricker'
-real, allocatable, dimension(:, :) :: refl
-real, allocatable, dimension(:, :) :: refl_top
+
 integer :: ng = 2
 !> Range of Gaussian standard devision along x2 for refl_shape = gaussian
 real, dimension(1:2) :: refl_sigma2 = [0.0, 0.0]
@@ -245,3 +265,9 @@ real :: vmin = 2000.0
 real :: vmax = 4000.0
 !> Velocity perturbation of layers
 real :: delta_v = 500.0
+
+-->
+
+## Examples
+
+We place several examples in the [example](https://github.com/lanl/rgm/tree/main/example) directory. Some of the generated figures display in the front page. 
