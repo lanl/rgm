@@ -1,20 +1,17 @@
 # Description
 **RGM: Random Geological Model generation package**
 
-We develop a Fortran package for generating realistic random geological models, including seismic images, faults, relative geological time (seismic horizons), and salt bodies, via a multi-randomization method. The generated models can be used to train machine learning models, e.g., [MTI-MTR](https://github.com/lanl/mtl), [SCF](https://github.com/lanl/scf).
+`RGM` is an open-source package for generating realistic random geological models, including medium parameter models $(V_p, V_s, \rho)$, seismic images (PP, PS, SP, SS images, or just PP image), geological faults, relative geological time volume, salt bodies, and unconformities, using a multi-randomization method. The generated models can be used to train machine learning models, e.g., multitask inference-refinement model [MTI-MTR](https://github.com/lanl/mtl) and seismicity-constrained fault characterization model [SCF](https://github.com/lanl/scf).
 
-The work was supported by Los Alamos National Laboratory (LANL) Laboratory Directory Research and Development (LDRD) project 20240322ER. LANL is operated by Triad National Security, LLC, for the National Nuclear Security Administration (NNSA) of the U.S. Department of Energy (DOE) under Contract No. 89233218CNA000001. The research used high-performance computing resources provided by LANL's Institutional Computing program.
+The work is supported by Los Alamos National Laboratory (LANL) Laboratory Directory Research and Development (LDRD) project 20240322ER. LANL is operated by Triad National Security, LLC, for the National Nuclear Security Administration (NNSA) of the U.S. Department of Energy (DOE) under Contract No. 89233218CNA000001. The research used high-performance computing resources provided by LANL's Institutional Computing program.
 
-The work is under LANL open source approval reference O4778.
-
-# Reference
-The paper associated with the code is under review.
+The codes are approved for public release under LANL approval reference O4778.
 
 # Requirement
 `RGM` depends on [FLIT](https://github.com/lanl/flit).
 
 # Use
-The code is written in Fortran. To install `RGM`,
+The code is written in modern Fortran. To install `RGM`,
 
 ```
 cd src
@@ -35,7 +32,7 @@ The compiled executables will be at [example/bin](example/bin). Running these ex
 The [Makefile](example/Makefile) in the [example](example) directory can serve as an example on how to use `RGM` in your code, including path inclusion and link of the compiled library/modules.
 
 # License
-&copy; 2024 - 2025. Triad National Security, LLC. All rights reserved.
+&copy; 2024-2026. Triad National Security, LLC. All rights reserved.
 
 This program is Open-Source under the BSD-3 License.
 
@@ -56,7 +53,8 @@ We welcome feedbacks, bug reports, and improvement ideas on `RGM`.
 
 If you use this package in your research and find it useful, please cite it as
 
-* Kai Gao, Ting Chen, 2024, RGM:  Random Geological Model Generation package, url: [github.com/lanl/rgm](https://github.com/lanl/rgm)
+* Kai Gao, Ting Chen, 2024, RGM: Random Geological Model Generation package, url: [github.com/lanl/rgm](https://github.com/lanl/rgm)
+* Kai Gao, Ting Chen, 2026, Generation of random geological models using multi-randomization for machine learning, _under review_, [preprint](https://eartharxiv.org/repository/view/11435/)
 
 # Examples
 
