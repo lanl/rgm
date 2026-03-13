@@ -53,8 +53,8 @@ We welcome feedbacks, bug reports, and improvement ideas on `RGM`.
 
 If you use this package in your research and find it useful, please cite it as
 
-* Kai Gao, Ting Chen, 2024, RGM: Random Geological Model Generation package, url: [github.com/lanl/rgm](https://github.com/lanl/rgm)
-* Kai Gao, Ting Chen, 2026, Generation of random geological models using multi-randomization for machine learning, _under review_, [preprint](https://eartharxiv.org/repository/view/11435/)
+* Kai Gao, Ting Chen, 2024, RGM: Random Geological Model Generation package, GitHub Repository: [github.com/lanl/rgm](https://github.com/lanl/rgm)
+* Kai Gao, Ting Chen, 2026, Generation of random geological models using multi-randomization for machine learning, Computers & Geosciences, doi: [10.1016/j.cageo.2026.106133](https://www.sciencedirect.com/science/article/pii/S0098300426000300)
 
 # Examples
 
