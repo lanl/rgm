@@ -1,11 +1,11 @@
 # Description
 **RGM: Random Geological Model generation package**
 
-`RGM` is an open-source package for generating realistic random geological models, including medium parameter models $(V_p, V_s, \rho)$, seismic images (PP, PS, SP, SS images, or just PP image), geological faults, relative geological time volume, salt bodies, and unconformities, using a multi-randomization method. The generated models can be used to train machine learning models, e.g., multitask inference-refinement model [MTI-MTR](https://github.com/lanl/mtl) and seismicity-constrained fault characterization model [SCF](https://github.com/lanl/scf).
+`RGM` is an open-source package for generating realistic random geological models, including medium parameter models $(V_p, V_s, \rho)$, seismic images (PP, PS, SP, and SS images, or just PP images), geological faults, relative geological time volumes, salt bodies, and unconformities, using a multi-randomization method. The generated models can be used to train machine learning models, e.g., the multitask inference-refinement model [MTI-MTR](https://github.com/lanl/mtl) and the seismicity-constrained fault characterization model [SCF](https://github.com/lanl/scf).
 
-The work is supported by Los Alamos National Laboratory (LANL) Laboratory Directory Research and Development (LDRD) project 20240322ER. LANL is operated by Triad National Security, LLC, for the National Nuclear Security Administration (NNSA) of the U.S. Department of Energy (DOE) under Contract No. 89233218CNA000001. The research used high-performance computing resources provided by LANL's Institutional Computing program.
+The work is supported by Los Alamos National Laboratory (LANL) Laboratory Directed Research and Development (LDRD) project 20240322ER. LANL is operated by Triad National Security, LLC, for the National Nuclear Security Administration (NNSA) of the U.S. Department of Energy (DOE) under Contract No. 89233218CNA000001. The research used high-performance computing resources provided by LANL's Institutional Computing program.
 
-The codes are approved for public release under LANL approval reference O4778.
+The code is approved for public release under LANL approval reference O4778.
 
 # Requirement
 `RGM` depends on [FLIT](https://github.com/lanl/flit).
@@ -18,18 +18,18 @@ cd src
 make
 ```
 
-The compiled library file (with a name `librgm.a`) and module files will be at the directory [lib](lib).
+The compiled library file (named `librgm.a`) and module files will be in the [lib](lib) directory.
 
-We include several simple examples to use `RGM` in [example](example). To try these examples,
+We include several simple examples of how to use `RGM` in [example](example). To try these examples,
 
 ```
 cd example
 make
 ```
 
-The compiled executables will be at [example/bin](example/bin). Running these executables will generate images/faults/salt bodies in the directory. All the generated files will be in little-endian single-precision raw binary format, with dimensions specificed in the respective codes.
+The compiled executables will be in [example/bin](example/bin). Running these executables will generate images/faults/salt bodies in that directory. All generated files will be in little-endian single-precision raw binary format, with dimensions specified in the respective codes.
 
-The [Makefile](example/Makefile) in the [example](example) directory can serve as an example on how to use `RGM` in your code, including path inclusion and link of the compiled library/modules.
+The [Makefile](example/Makefile) in the [example](example) directory can serve as an example of how to use `RGM` in your code, including path inclusion and linking of the compiled library/modules.
 
 # License
 &copy; 2024-2026. Triad National Security, LLC. All rights reserved.
@@ -49,10 +49,9 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 # Author
 Kai Gao, <kaigao@lanl.gov>
 
-We welcome feedbacks, bug reports, and improvement ideas on `RGM`.
+We welcome feedback, bug reports, and improvement ideas for `RGM`.
 
-If you use this package in your research and find it useful, please cite it as
-
+If you use this package in your research and find it useful, please cite it as: 
 * Kai Gao, Ting Chen, 2024, RGM: Random Geological Model Generation package, GitHub Repository: [github.com/lanl/rgm](https://github.com/lanl/rgm)
 * Kai Gao, Ting Chen, 2026, Generation of random geological models using multi-randomization for machine learning, Computers & Geosciences, doi: [10.1016/j.cageo.2026.106133](https://www.sciencedirect.com/science/article/pii/S0098300426000300)
 
