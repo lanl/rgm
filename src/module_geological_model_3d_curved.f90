@@ -823,7 +823,7 @@ contains
             do j = 1, n2
                 lz(:, j, k) = ginterp([0.0, (ne1 + 1.0)/n1, (n1 - ne1 - 1.0)/n1, 1.0], &
                     [r(j, k), r(j, k) + ne1, rt(j, k) - ne1, rt(j, k)], &
-                    linspace(0.0, 1.0, nl))
+                    linspace(0.0, 1.0, nl), 'linear')
             end do
         end do
         !$omp end parallel do
@@ -906,7 +906,7 @@ contains
                 ! RGT is linearly interpolated based on the location of reflectors
                 ! As such, it may be slightly different from what obtained with rgm2
                 if (this%yn_rgt) then
-                    t(:, j, k) = ginterp(n1 - 1.0 - lz(:, j, k), linspace(1.0, 0.0, nl), linspace(0.0, n1 - 1.0, n1))
+                    t(:, j, k) = ginterp(n1 - 1.0 - lz(:, j, k), linspace(1.0, 0.0, nl), linspace(0.0, n1 - 1.0, n1), 'linear')
                 end if
 
             end do
