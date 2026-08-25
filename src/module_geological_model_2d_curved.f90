@@ -1,5 +1,5 @@
 !
-! © 2024-2025. Triad National Security, LLC. All rights reserved.
+! © 2024-2026. Triad National Security, LLC. All rights reserved.
 !
 ! This program was produced under U.S. Government contract 89233218CNA000001
 ! for Los Alamos National Laboratory (LANL), which is operated by
@@ -8,7 +8,7 @@
 ! Triad National Security, LLC, and the U.S. Department of Energy/National
 ! Nuclear Security Administration. The Government is granted for itself and
 ! others acting on its behalf a nonexclusive, paid-up, irrevocable worldwide
-! license in this material to reproduce, prepare. derivative works,
+! license in this material to reproduce, prepare derivative works,
 ! distribute copies to the public, perform publicly and display publicly,
 ! and to permit others to do so.
 !
@@ -19,25 +19,34 @@
 module geological_model_2d_curved
 
     !
-    ! The module is mostly a simplified version of rgm2 and rgm2_elastic,
-    ! with a few changes:
-    !   - The way that generates layers and reflectors changes from
-    !       generate reflectivity series -> add faults -> convolve with wavelet
-    !       generate velocity model -> add faults -> compute reflectivity -> convolve with wavelet
-    !       The process is closer to realistic geological sedimentation and deformation.
-    !       Note that in this case, the image of faults may not be zeros, especially for faults with
-    !       moderate angles.
-    !   - Support generating curved faults to further enhance reality where
-    !       the fault dip at the top can be different from that of the bottom
-    !   - Simplifies salt body insertion and reflectivity computation,
-    !       so the reflectivity image of salt may be more accurate now.
-    !   - Support generating both acoustic and elastic velocity model and migration images.
-    ! As such, there are some changes on the parameters of rgm2_curved
-    ! compared with rgm2/rgm2_elastic, but the changes are minimized to keep consistency
+    ! 2D random geological model generator (type rgm2_curved).
+    !
+    ! The generator follows a geologically motivated workflow:
+    ! build layered velocity/density (and optionally elastic) models between two
+    ! bounding curves -> deform the model with faults -> optionally insert
+    ! salt bodies and unconformities -> compute reflectivity -> convolve with a
+    ! wavelet to produce a synthetic migration-like image, together with
+    ! pixel-wise labels (fault index/dip/displacement, relative geological
+    ! time, facies, salt).
+    !
+    ! Faults are curved: the dip can vary with depth (listric faults via
+    ! delta_dip).
+    !
+    ! The displacement of a fault can spatially vary along the fault when
+    ! yn_vary_disp = .true. In this case, the displacement follows a slip patch
+    ! that is maximum at the patch center and diminishes to zero at the patch
+    ! boundary (fault tips), so a fault can die out within the model;
+    ! fault_disp stores the spatially varying displacements.
+    ! Additionally, the displacement can decay away from the fault when
+    ! yn_disp_decay = .true., mimicking the deformation halo of a finite slip
+    ! patch (fault drag, rollover, and blind-fault folding).
     !
 
     use libflit
     use geological_model_utility
+    use geological_model_meander
+    use geological_model_drainage
+    use geological_model_karst
 
     implicit none
 
@@ -71,6 +80,38 @@ module geological_model_2d_curved
         real, allocatable, dimension(:) :: dip, disp
         !> Dip increase/descrease at the top compared with the top
         real, dimension(1:2) :: delta_dip = [15.0, 30.0]
+
+        !> Whether to spatially vary the displacement along each fault.
+        !> When = .true., the displacement follows an elliptical slip patch
+        !> along the fault: maximum at the patch center and diminishing to zero
+        !> at the patch boundary (fault tips), so a fault can die out within
+        !> the model rather than always cutting through the entire section, and
+        !> the block deforms gently near the fault tips.
+        !> In this case, fault_disp stores the spatially varying displacements.
+        logical :: yn_vary_disp = .false.
+        !> Range of the along-depth semi-axis of the slip patch,
+        !> relative to the model depth n1
+        real, dimension(1:2) :: disp_radius_dip = [0.6, 1.2]
+        !> Range of the center depth of the slip patch, relative to the model
+        !> depth n1. Note that all the displacement tapering (and therefore the
+        !> deformation of layers) occurs between the patch center and the patch
+        !> boundary; setting a shallower center together with a smaller
+        !> disp_radius_dip keeps the fault tips and the associated deformation
+        !> away from the deep, high-velocity section
+        real, dimension(1:2) :: disp_center_dip = [0.25, 0.75]
+
+        !> Whether to decay the fault displacement away from the fault.
+        !> When = .false. (default), the displaced block shifts rigidly
+        !> (correct for through-going faults). When = .true., the displacement
+        !> of the shifted block decays with a Gaussian profile of the distance
+        !> to the fault, mimicking the deformation halo of a finite slip patch
+        !> (fault drag, rollover, blind-fault folding); the decay is applied
+        !> only within the displaced block, and the displacement at the fault
+        !> itself is unaffected.
+        logical :: yn_disp_decay = .false.
+        !> Range of the displacement decay width (the Gaussian standard deviation
+        !> of the decay profile), relative to the model depth n1
+        real, dimension(1:2) :: disp_decay_width = [0.5, 1.0]
         !> sigmas of Gaussian filter for smoothing the generated noise
         real, dimension(1:2) :: noise_smooth = [1.0, 1.0]
         !> Level of noise in terms of max(abs(noise))/max(abs(image))
@@ -166,6 +207,37 @@ module geological_model_2d_curved
         real :: unconf_refl_smooth = 10.0
         !> Reflector shape
         character(len=12) :: unconf_refl_shape = 'random'
+        !> Shape of the unconformity surfaces, can be one of
+        !>      random - random (Perlin-noise) topography (default)
+        !>      meander_channel - meandering river channels
+        !>      meander_canyon - meandering incised canyon
+        !>      drainage_channel - dendritic drainage channel network
+        !>      drainage_canyon - canyon carved by a dendritic drainage network
+        !> For the channel/canyon shapes, a map-view geomorphological simulation
+        !> is run on an auxiliary grid and a random cross-flow section of its
+        !> erosional depth map is used as the unconformity topography;
+        !> unconf_height still bounds the total erosional relief
+        character(len=24) :: unconf_shape = 'random'
+        !> Channel/canyon width as an (approximate) fraction of the lateral
+        !> model extent, drawn per unconformity surface
+        real, dimension(1:2) :: unconf_channel_width = [0.03, 0.08]
+        !> Meander maturity; scales the number of migration iterations
+        real :: unconf_channel_sinuosity = 1.0
+        !> Total centerline length of the meandering channel/canyon in the
+        !> internal units of the migration simulation; since the simulated
+        !> map is fit to the auxiliary grid, this effectively controls how
+        !> many meander bends appear across the map (and thus how many
+        !> channel crossings the sampled 2D section can contain). Values
+        !> larger than the default add more bends of the same shape; smaller
+        !> values give fewer, larger bends (clamped from below to keep enough
+        !> centerline nodes for the migration to develop realistic meanders)
+        real :: unconf_channel_length = 25000.0
+        !> Drainage density (fraction of cells covered by channels) for the
+        !> drainage shapes, drawn per unconformity surface
+        real, dimension(1:2) :: unconf_channel_density = [0.02, 0.08]
+        !> Amplitude of the background (interfluve) topography relative to the
+        !> channel/canyon incision depth; 0 = flat background between channels
+        real :: unconf_topo = 0.25
 
         !==============================================================================================
         !> Salt body
@@ -190,6 +262,34 @@ module geological_model_2d_curved
         real :: salt_path_variation = 5.0
         !> Number of nodes to form the salt vertical profile
         integer :: salt_nnode = 10
+
+        !==============================================================================================
+        !> Whether to insert a karst cave system into the model
+        logical :: yn_karst = .false.
+        !> Depth window (relative to n1) containing the karst passages
+        real, dimension(1:2) :: karst_z = [0.4, 0.9]
+        !> Number of karst passages
+        integer :: karst_npassage = 10
+        !> Number of control points per passage; more points -> longer passages
+        integer :: karst_nctrl = 40
+        !> Range of the mean passage radius (in grid points);
+        !> [0, 0] (default) = automatically set to [0.015, 0.03]*n1
+        real, dimension(1:2) :: karst_radius = [0.0, 0.0]
+        !> Fractional standard deviation of the radius along a passage
+        real :: karst_radius_variation = 0.35
+        !> Sinuosity of the passages: 0 = straight, 1 = fully random walk
+        real :: karst_tortuosity = 0.6
+        !> Probability that a new passage branches off an existing one
+        real :: karst_connect = 0.7
+        !> Medium properties filling the karst caves; the defaults represent
+        !> water/sediment-filled voids (low-velocity anomalies)
+        real :: karst_vp = 2500.0
+        real :: karst_vs = 1200.0
+        real :: karst_rho = 2000.0
+        !> Is karst before or after unconformity?
+        logical :: karst_before_unconf = .true.
+        !> Output mask: 1 = karst
+        real, allocatable, dimension(:, :) :: karst
 
         !==============================================================================================
         !> Elastic
@@ -360,31 +460,31 @@ contains
             select case (this%noise_type)
 
                 case ('normal', 'gaussian', 'uniform', 'exp')
-                    ww = gauss_filt(random(n1, n2, dist=this%noise_type, seed=this%seed*17), this%noise_smooth)
+                    ww = gauss_filt(random(n1, n2, dist=this%noise_type, seed=safe_seed(int(this%seed, 8)*17)), this%noise_smooth)
                     ww = ww - mean(ww)
                     ww = ww/maxval(abs(ww))*this%noise_level*maxval(abs(this%image_pp))
                     this%image_pp = this%image_pp + ww
 
-                    ww = gauss_filt(random(n1, n2, dist=this%noise_type, seed=this%seed*17 + 1), this%noise_smooth)
+                    ww = gauss_filt(random(n1, n2, dist=this%noise_type, seed=safe_seed(int(this%seed, 8)*17 + 1)), this%noise_smooth)
                     ww = ww - mean(ww)
                     ww = ww/maxval(abs(ww))*this%noise_level*maxval(abs(this%image_ps))
                     this%image_ps = this%image_ps + ww
 
-                    ww = gauss_filt(random(n1, n2, dist=this%noise_type, seed=this%seed*17 + 2), this%noise_smooth)
+                    ww = gauss_filt(random(n1, n2, dist=this%noise_type, seed=safe_seed(int(this%seed, 8)*17 + 2)), this%noise_smooth)
                     ww = ww - mean(ww)
                     ww = ww/maxval(abs(ww))*this%noise_level*maxval(abs(this%image_sp))
                     this%image_sp = this%image_sp + ww
 
-                    ww = gauss_filt(random(n1, n2, dist=this%noise_type, seed=this%seed*17 + 3), this%noise_smooth)
+                    ww = gauss_filt(random(n1, n2, dist=this%noise_type, seed=safe_seed(int(this%seed, 8)*17 + 3)), this%noise_smooth)
                     ww = ww - mean(ww)
                     ww = ww/maxval(abs(ww))*this%noise_level*maxval(abs(this%image_ss))
                     this%image_ss = this%image_ss + ww
 
                 case ('wavenumber')
-                    this%image_pp = this%image_pp + noise_wavenumber(this%image_pp, this%noise_level, this%noise_smooth, this%seed*17)
-                    this%image_ps = this%image_ps + noise_wavenumber(this%image_ps, this%noise_level, this%noise_smooth, this%seed*17 + 1)
-                    this%image_sp = this%image_sp + noise_wavenumber(this%image_sp, this%noise_level, this%noise_smooth, this%seed*17 + 2)
-                    this%image_ss = this%image_ss + noise_wavenumber(this%image_ss, this%noise_level, this%noise_smooth, this%seed*17 + 3)
+                    this%image_pp = this%image_pp + noise_wavenumber(this%image_pp, this%noise_level, this%noise_smooth, safe_seed(int(this%seed, 8)*17))
+                    this%image_ps = this%image_ps + noise_wavenumber(this%image_ps, this%noise_level, this%noise_smooth, safe_seed(int(this%seed, 8)*17 + 1))
+                    this%image_sp = this%image_sp + noise_wavenumber(this%image_sp, this%noise_level, this%noise_smooth, safe_seed(int(this%seed, 8)*17 + 2))
+                    this%image_ss = this%image_ss + noise_wavenumber(this%image_ss, this%noise_level, this%noise_smooth, safe_seed(int(this%seed, 8)*17 + 3))
 
             end select
         end if
@@ -407,31 +507,31 @@ contains
             select case (this%noise_type)
 
                 case ('normal', 'gaussian', 'uniform', 'exp')
-                    ww = gauss_filt(random(n1, n2, dist=this%noise_type, seed=this%seed*17), this%noise_smooth)
+                    ww = gauss_filt(random(n1, n2, dist=this%noise_type, seed=safe_seed(int(this%seed, 8)*17)), this%noise_smooth)
                     ww = ww - mean(ww)
                     ww = ww/maxval(abs(ww))*this%noise_level*maxval(abs(this%image_pp))
                     this%image_pp = this%image_pp + ww
 
-                    ww = gauss_filt(random(n1, n2, dist=this%noise_type, seed=this%seed*17 + 1), this%noise_smooth)
+                    ww = gauss_filt(random(n1, n2, dist=this%noise_type, seed=safe_seed(int(this%seed, 8)*17 + 1)), this%noise_smooth)
                     ww = ww - mean(ww)
                     ww = ww/maxval(abs(ww))*this%noise_level*maxval(abs(this%image_ps))
                     this%image_ps = this%image_ps + ww
 
-                    ww = gauss_filt(random(n1, n2, dist=this%noise_type, seed=this%seed*17 + 2), this%noise_smooth)
+                    ww = gauss_filt(random(n1, n2, dist=this%noise_type, seed=safe_seed(int(this%seed, 8)*17 + 2)), this%noise_smooth)
                     ww = ww - mean(ww)
                     ww = ww/maxval(abs(ww))*this%noise_level*maxval(abs(this%image_sp))
                     this%image_sp = this%image_sp + ww
 
-                    ww = gauss_filt(random(n1, n2, dist=this%noise_type, seed=this%seed*17 + 3), this%noise_smooth)
+                    ww = gauss_filt(random(n1, n2, dist=this%noise_type, seed=safe_seed(int(this%seed, 8)*17 + 3)), this%noise_smooth)
                     ww = ww - mean(ww)
                     ww = ww/maxval(abs(ww))*this%noise_level*maxval(abs(this%image_ss))
                     this%image_ss = this%image_ss + ww
 
                 case ('wavenumber')
-                    this%image_pp = this%image_pp + noise_wavenumber(this%image_pp, this%noise_level, this%noise_smooth, this%seed*17)
-                    this%image_ps = this%image_ps + noise_wavenumber(this%image_ps, this%noise_level, this%noise_smooth, this%seed*17 - 1)
-                    this%image_sp = this%image_sp + noise_wavenumber(this%image_sp, this%noise_level, this%noise_smooth, this%seed*17 - 2)
-                    this%image_ss = this%image_ss + noise_wavenumber(this%image_ss, this%noise_level, this%noise_smooth, this%seed*17 - 3)
+                    this%image_pp = this%image_pp + noise_wavenumber(this%image_pp, this%noise_level, this%noise_smooth, safe_seed(int(this%seed, 8)*17))
+                    this%image_ps = this%image_ps + noise_wavenumber(this%image_ps, this%noise_level, this%noise_smooth, safe_seed(int(this%seed, 8)*17 - 1))
+                    this%image_sp = this%image_sp + noise_wavenumber(this%image_sp, this%noise_level, this%noise_smooth, safe_seed(int(this%seed, 8)*17 - 2))
+                    this%image_ss = this%image_ss + noise_wavenumber(this%image_ss, this%noise_level, this%noise_smooth, safe_seed(int(this%seed, 8)*17 - 3))
 
             end select
         end if
@@ -465,13 +565,13 @@ contains
             select case (this%noise_type)
 
                 case ('normal', 'gaussian', 'uniform', 'exp')
-                    ww = gauss_filt(random(n1, n2, dist=this%noise_type, seed=this%seed*17), this%noise_smooth)
+                    ww = gauss_filt(random(n1, n2, dist=this%noise_type, seed=safe_seed(int(this%seed, 8)*17)), this%noise_smooth)
                     ww = ww - mean(ww)
                     ww = ww/maxval(abs(ww))*this%noise_level*maxval(abs(this%image))
                     this%image = this%image + ww
 
                 case ('wavenumber')
-                    this%image = this%image + noise_wavenumber(this%image, this%noise_level, this%noise_smooth, this%seed*17)
+                    this%image = this%image + noise_wavenumber(this%image, this%noise_level, this%noise_smooth, safe_seed(int(this%seed, 8)*17))
 
             end select
         end if
@@ -486,13 +586,13 @@ contains
             select case (this%noise_type)
 
                 case ('normal', 'gaussian', 'uniform', 'exp')
-                    ww = gauss_filt(random(n1, n2, dist=this%noise_type, seed=this%seed*17), this%noise_smooth)
+                    ww = gauss_filt(random(n1, n2, dist=this%noise_type, seed=safe_seed(int(this%seed, 8)*17)), this%noise_smooth)
                     ww = ww - mean(ww)
                     ww = ww/maxval(abs(ww))*this%noise_level*maxval(abs(this%image))
                     this%image = this%image + ww
 
                 case ('wavenumber')
-                    this%image = this%image + noise_wavenumber(this%image, this%noise_level, this%noise_smooth, this%seed*17)
+                    this%image = this%image + noise_wavenumber(this%image, this%noise_level, this%noise_smooth, safe_seed(int(this%seed, 8)*17))
 
             end select
         end if
@@ -532,6 +632,11 @@ contains
         real, allocatable, dimension(:, :) :: fdip, fdisp, ffdip, ffdisp
         integer :: l, nsf
         real :: b, b_prev, dxys, dist, dist_prev, theta, x0
+        real, allocatable, dimension(:) :: disp_az, disp_zc, decay_w, bs
+        real :: alpha, dloc
+        integer :: ia, ja
+        real :: wa, wb
+        logical :: yn_mark
         logical, allocatable, dimension(:, :) :: fblock
         real, allocatable, dimension(:, :) :: dips
         real, allocatable, dimension(:) :: x1, x2, rds, topz, rc, vds, pds, xs
@@ -574,18 +679,18 @@ contains
 
                 dip = [random(nint(nf/2.0), range=[0.95, 1.05]*this%dip(1), seed=this%seed)*const_deg2rad, &
                     random(nf - nint(nf/2.0), range=[0.95, 1.05]*this%dip(2), seed=this%seed)*const_deg2rad]
-                disp = [random(nint(nf/2.0), range=[0.9, 1.1]*this%disp(1), seed=this%seed*2), &
-                    random(nf - nint(nf/2.0), range=[0.9, 1.1]*this%disp(2), seed=this%seed*2)]
+                disp = [random(nint(nf/2.0), range=[0.9, 1.1]*this%disp(1), seed=safe_seed(int(this%seed, 8)*2)), &
+                    random(nf - nint(nf/2.0), range=[0.9, 1.1]*this%disp(2), seed=safe_seed(int(this%seed, 8)*2))]
 
             else
 
                 ! Dip angles and fault displacements
                 nsf = size(this%dip)/2
                 dip = random(ceiling(nf*1.0/nsf), range=this%dip(1:2), seed=this%seed)
-                disp = random(ceiling(nf*1.0/nsf), range=this%disp(1:2), seed=this%seed*2)
+                disp = random(ceiling(nf*1.0/nsf), range=this%disp(1:2), seed=safe_seed(int(this%seed, 8)*2))
                 do i = 2, nsf
                     dip = [dip, random(ceiling(nf*1.0/nsf), range=this%dip((i - 1)*2 + 1:i*2), seed=this%seed)]
-                    disp = [disp, random(ceiling(nf*1.0/nsf), range=this%disp((i - 1)*2 + 1:i*2), seed=this%seed*2)]
+                    disp = [disp, random(ceiling(nf*1.0/nsf), range=this%disp((i - 1)*2 + 1:i*2), seed=safe_seed(int(this%seed, 8)*2))]
                 end do
                 dip = dip(1:nf)
                 dip = dip*const_deg2rad
@@ -615,7 +720,7 @@ contains
         ! Note that to ensure the faults have proper dip angle range within the final cropped image,
         ! here I add some extra degrees to the begin and end dip angles
         dips = zeros(n1, nf)
-        delta_dip = random(nf, range=this%delta_dip, seed=nint(this%seed*2.5))*const_deg2rad
+        delta_dip = random(nf, range=this%delta_dip, seed=safe_seed((int(this%seed, 8)*5 + 1)/2))*const_deg2rad
         do i = 1, nf
             if (dip(i) <= const_pi_half) then
                 dips(:, i) = [ones(ne1)*dip(i), &
@@ -632,11 +737,11 @@ contains
         select case (this%refl_shape)
 
             case default
-                r = random(n2, dist='normal', seed=this%seed*3)
+                r = random(n2, dist='normal', seed=safe_seed(int(this%seed, 8)*3))
                 r = gauss_filt(r, this%refl_smooth)
 
             case ('random')
-                r = random(n2, dist='normal', seed=this%seed*3)
+                r = random(n2, dist='normal', seed=safe_seed(int(this%seed, 8)*3))
                 r = gauss_filt(r, this%refl_smooth)
 
             case ('gaussian', 'cauchy')
@@ -652,9 +757,9 @@ contains
                     sigma2 = this%refl_sigma2
                 end if
 
-                mu = random(this%ng, range=mu2, seed=this%seed*3)
-                sigma = random(this%ng, range=sigma2, seed=this%seed*4)
-                height = random(this%ng, range=this%refl_height, seed=this%seed*5)
+                mu = random(this%ng, range=mu2, seed=safe_seed(int(this%seed, 8)*3))
+                sigma = random(this%ng, range=sigma2, seed=safe_seed(int(this%seed, 8)*4))
+                height = random(this%ng, range=this%refl_height, seed=safe_seed(int(this%seed, 8)*5))
 
                 r = zeros(n2)
                 do i = 1, this%ng
@@ -668,7 +773,7 @@ contains
 
             case ('perlin')
                 pn%n1 = n2
-                pn%seed = this%seed*3
+                pn%seed = safe_seed(int(this%seed, 8)*3)
                 r = gauss_filt(pn%generate(), this%refl_smooth)
 
             case ('custom')
@@ -686,11 +791,11 @@ contains
             select case (this%refl_shape_top)
 
                 case default
-                    rt = random(n2, dist='normal', seed=this%seed*3 - 1)
+                    rt = random(n2, dist='normal', seed=safe_seed(int(this%seed, 8)*3 - 1))
                     rt = gauss_filt(rt, this%refl_smooth_top)
 
                 case ('random')
-                    rt = random(n2, dist='normal', seed=this%seed*3 - 1)
+                    rt = random(n2, dist='normal', seed=safe_seed(int(this%seed, 8)*3 - 1))
                     rt = gauss_filt(rt, this%refl_smooth_top)
 
                 case ('gaussian', 'cauchy')
@@ -706,9 +811,9 @@ contains
                         sigma2 = this%refl_sigma2
                     end if
 
-                    mu = random(this%ng, range=mu2, seed=this%seed*3 - 1)
-                    sigma = random(this%ng, range=sigma2, seed=this%seed*4 - 1)
-                    height = random(this%ng, range=this%refl_height_top, seed=this%seed*5 - 1)
+                    mu = random(this%ng, range=mu2, seed=safe_seed(int(this%seed, 8)*3 - 1))
+                    sigma = random(this%ng, range=sigma2, seed=safe_seed(int(this%seed, 8)*4 - 1))
+                    height = random(this%ng, range=this%refl_height_top, seed=safe_seed(int(this%seed, 8)*5 - 1))
 
                     rt = zeros(n2)
                     do i = 1, this%ng
@@ -722,7 +827,7 @@ contains
 
                 case ('perlin')
                     pn%n1 = n2
-                    pn%seed = this%seed*3 - 1
+                    pn%seed = safe_seed(int(this%seed, 8)*3 - 1)
                     rt = gauss_filt(pn%generate(), this%refl_smooth_top)
 
                 case ('custom')
@@ -758,18 +863,18 @@ contains
 
         nl = nint(this%nl + this%nl*2.0*ne1/(n1 - 2*ne1))
 
-        vv = random(nl - 1, seed=this%seed*6)*this%delta_v
+        vv = random(nl - 1, seed=safe_seed(int(this%seed, 8)*6))*this%delta_v
         vv = linspace(this%vmax*(1.0 + ne1*1.0/this%n1), this%vmin*(1.0 - ne1*1.0/this%n1), nl - 1) + vv
 
         lz = zeros(nl, n2)
         call assert(abs(this%lwv) <= 1, ' Error: lwv must be 0 <= lwv <= 1. ')
-        plw = random(nl, range=[1 - this%lwv, 1 + this%lwv], seed=this%seed*7)
+        plw = random(nl, range=[1 - this%lwv, 1 + this%lwv], seed=safe_seed(int(this%seed, 8)*7))
 
         !$omp parallel do private(j)
         do j = 1, n2
             lz(:, j) = ginterp([0.0, (ne1 + 1.0)/n1, (n1 - ne1 - 1.0)/n1, 1.0], &
                 [r(j), r(j) + ne1, rt(j) - ne1, rt(j)], &
-                linspace(0.0, 1.0, nl), 'linaer')
+                linspace(0.0, 1.0, nl), 'linear')
         end do
         !$omp end parallel do
 
@@ -789,7 +894,8 @@ contains
             !$omp parallel do private(i, thick)
             do i = 1, nl - 1
                 thick = (lz(i + 1, 1) - lz(i, 1))*this%lwh*2.0
-                pxy(i, :) = gauss_filt(random(n2, seed=this%seed*7 - i), this%secondary_refl_smooth)
+                ! The seed here must be sign-consistent, e.g., when = -1, all must < 0; otherwise, all must > 0
+                pxy(i, :) = gauss_filt(random(n2, seed=safe_seed(int(this%seed, 8)*nl - i)), this%secondary_refl_smooth)
                 pxy(i, :) = rescale(pxy(i, :), [-thick, thick]*(0.5 + (nl - i + 0.0)/(nl - 1.0)*0.5))
             end do
             !$omp end parallel do
@@ -874,22 +980,33 @@ contains
 
             if (this%yn_regular_fault) then
 
-                rc = random(nf - 1, range=[0.75, 1.25]*0.9*this%n2/(nf - 1.0), seed=this%seed*12)
+                rc = random(nf - 1, range=[0.75, 1.25]*0.9*this%n2/(nf - 1.0), seed=safe_seed(int(this%seed, 8)*12))
                 rc = rc*0.9*this%n2/sum(rc)
                 rc = sort(rc)
                 f2 = zeros(nf)
-                f2(1) = ne2 + rand(range=[0.05, 0.1]*this%n2, seed=this%seed*12 - 1)
+                f2(1) = ne2 + rand(range=[0.05, 0.1]*this%n2, seed=safe_seed(int(this%seed, 8)*12 - 1))
                 f2(2:) = f2(1) + cumsum(rc)
                 if (.not. this%yn_group_faults) then
-                    f2 = random_permute(f2, seed=this%seed*12 - 2)
+                    f2 = random_permute(f2, seed=safe_seed(int(this%seed, 8)*12 - 2))
                 end if
 
             else
 
                 f2 = random(nf, range=[ne2 + 0.1*this%n2, n2 - ne2 - 0.1*this%n2], &
-                    seed=this%seed*12, spacing=0.75*(n2 - 2*ne2 - 0.2*this%n2)/nf)
+                    seed=safe_seed(int(this%seed, 8)*12), spacing=0.75*(n2 - 2*ne2 - 0.2*this%n2)/nf)
 
             end if
+
+            ! Elliptical slip patches for spatially varying fault displacement;
+            ! in 2D, the patch is an interval along the fault parameterized by depth
+            disp_az = random(nf, range=this%disp_radius_dip, seed=safe_seed((int(this%seed, 8)*15 + 1)/2))*this%n1
+            disp_zc = ne1 + random(nf, range=this%disp_center_dip, seed=safe_seed((int(this%seed, 8)*19 + 1)/2))*this%n1
+
+            ! Widths of the Gaussian decay of displacement away from each fault
+            decay_w = random(nf, range=this%disp_decay_width, seed=safe_seed((int(this%seed, 8)*21 + 1)/2))*this%n1
+
+            ! Lateral positions of the fault at all depths
+            bs = zeros(n1)
 
             do fi = 1, nf
 
@@ -921,40 +1038,59 @@ contains
                         dxys = -1.0/tan(dips(i - 1, fi))
                         b = b_prev + dxys
                     end if
+                    bs(i) = b
 
-                    !$omp parallel do private(j, x0, dist)
-                    do j = 1, n2
+                    ! Local displacement scaling from the slip patch; in 2D it
+                    ! only depends on depth. Where the local displacement
+                    ! diminishes below half a grid point, the fault causes no
+                    ! visible offset, and the depth is beyond the fault tip
+                    ! and therefore not marked as fault
+                    if (this%yn_vary_disp) then
+                        alpha = max(0.0, 1.0 - ((i - disp_zc(fi))/disp_az(fi))**2)
+                        yn_mark = abs(disp(fi))*alpha >= 0.5
+                    else
+                        alpha = 1.0
+                        yn_mark = .true.
+                    end if
 
-                        x0 = j - 1.0
+                    if (yn_mark) then
 
-                        dist = abs(x0 - b)
-                        if (dist < 0.5*fwidth/sin(theta)) then
-                            f(i, j) = fi
-                            cf(i, j) = 1.0
-                            fdip(i, j) = theta
-                            fdisp(i, j) = 1.0
-                        end if
-
-                    end do
-                    !$omp end parallel do
-
-                    if (abs(dxys) >= 1.0) then
-
-                        !$omp parallel do private(j, x0, dist_prev, dist)
+                        !$omp parallel do private(j, x0, dist)
                         do j = 1, n2
 
                             x0 = j - 1.0
 
-                            dist_prev = abs(x0 - b_prev)
                             dist = abs(x0 - b)
-                            if (dist_prev <= abs(dxys) .and. dist <= abs(dxys)) then
+                            if (dist < 0.5*fwidth/sin(theta)) then
                                 f(i, j) = fi
                                 cf(i, j) = 1.0
                                 fdip(i, j) = theta
-                                fdisp(i, j) = 1.0
+                                ! Store the local displacement magnitude
+                                fdisp(i, j) = abs(disp(fi))*alpha
                             end if
+
                         end do
                         !$omp end parallel do
+
+                        if (abs(dxys) >= 1.0) then
+
+                            !$omp parallel do private(j, x0, dist_prev, dist)
+                            do j = 1, n2
+
+                                x0 = j - 1.0
+
+                                dist_prev = abs(x0 - b_prev)
+                                dist = abs(x0 - b)
+                                if (dist_prev <= abs(dxys) .and. dist <= abs(dxys)) then
+                                    f(i, j) = fi
+                                    cf(i, j) = 1.0
+                                    fdip(i, j) = theta
+                                    fdisp(i, j) = abs(disp(fi))*alpha
+                                end if
+                            end do
+                            !$omp end parallel do
+
+                        end if
 
                     end if
 
@@ -977,43 +1113,97 @@ contains
 
                 end do
 
-                ! Shift block
-                ! Here I use constant throw in both x and z, rather than depth-varying throw
-                ! Modeling depth-varying throw seems very difficult in a regular-grid setting
-                ! Another reason is that if using depth-varying throw, particularly in x,
-                ! then the dip of previous faults will have to change accordingly since
-                ! the points of faults have shifted nonuniformly
-                !$omp parallel do private(i, j, newi, newj) collapse(2)
+                ! Shift the fault block; here for each target point within the fault
+                ! block, the values are gathered from its source point, which is
+                ! equivalent to the previous shift-source-to-target (scatter) approach
+                ! for a constant fault displacement, while it naturally supports
+                ! spatially varying (e.g., depth-varying) fault displacement without
+                ! leaving holes in the model
+                !$omp parallel do private(i, j, x0, alpha, dloc, newi, newj, ia, ja, wa, wb) collapse(2)
                 do j = 1, n2
                     do i = 1, n1
 
-                        newi = nint(i + disp(fi)*sin(dip(fi)))
-                        newj = nint(j - disp(fi)*cos(dip(fi)))
+                        if (fblock(i, j)) then
 
-                        if (newi >= 1 .and. newi <= n1 .and. newj >= 1 .and. newj <= n2) then
-                            if (fblock(newi, newj)) then
+                            ! Local displacement from the slip patch, maximum at
+                            ! the patch center and diminishing to zero at the
+                            ! patch boundary (fault tips)
+                            if (this%yn_vary_disp) then
+                                alpha = max(0.0, 1.0 - ((i - disp_zc(fi))/disp_az(fi))**2)
+                            else
+                                alpha = 1.0
+                            end if
+
+                            ! Decay the displacement away from the fault with a Gaussian
+                            ! profile of the distance to the fault, mimicking the deformation
+                            ! halo of a finite slip patch (fault drag, rollover, and
+                            ! blind-fault folding); the displacement at the fault
+                            ! itself is unaffected
+                            if (this%yn_disp_decay) then
+                                x0 = j - 1.0
+                                alpha = alpha*exp(-0.5*((x0 - bs(i))/(decay_w(fi) + float_tiny))**2)
+                            end if
+
+                            dloc = disp(fi)*alpha
+
+                            ! The source point of the target point
+                            newi = nint(i - dloc*sin(dip(fi)))
+                            newj = nint(j + dloc*cos(dip(fi)))
+
+                            if (newi >= 1 .and. newi <= n1 .and. newj >= 1 .and. newj <= n2) then
 
                                 ! Move velocity model
-                                w(newi, newj) = ww(i, j)
+                                w(i, j) = ww(newi, newj)
 
                                 ! Move facies
                                 if (this%yn_facies) then
-                                    m(newi, newj) = mm(i, j)
+                                    m(i, j) = mm(newi, newj)
                                 end if
 
                                 ! Move RGT
                                 if (this%yn_rgt) then
-                                    t(newi, newj) = tt(i, j)
+                                    t(i, j) = tt(newi, newj)
                                 end if
 
                                 ! Move existing faults
-                                if (cf(newi, newj) == 0) then
-                                    f(newi, newj) = ff(i, j)
-                                    fdip(newi, newj) = ffdip(i, j)
-                                    fdisp(newi, newj) = ffdisp(i, j)
+                                if (cf(i, j) == 0) then
+                                    f(i, j) = ff(newi, newj)
+                                    fdip(i, j) = ffdip(newi, newj)
+                                    fdisp(i, j) = ffdisp(newi, newj)
+                                end if
+
+                                ! For a spatially varying displacement, rounding the source
+                                ! point to the nearest grid point quantizes the warp into
+                                ! integer shifts, which produces terrace (staircase) artifacts
+                                ! along the iso-displacement contours; therefore, the continuous
+                                ! fields (velocity and RGT) are gathered with bilinear
+                                ! interpolation instead, while the categorical fields (facies
+                                ! and fault attributes) keep the nearest-neighbor sampling
+                                if (this%yn_vary_disp .or. this%yn_disp_decay) then
+
+                                    ia = clip(floor(i - dloc*sin(dip(fi))), 1, n1 - 1)
+                                    ja = clip(floor(j + dloc*cos(dip(fi))), 1, n2 - 1)
+                                    wa = clip(i - dloc*sin(dip(fi)) - ia, 0.0, 1.0)
+                                    wb = clip(j + dloc*cos(dip(fi)) - ja, 0.0, 1.0)
+
+                                    w(i, j) = &
+                                        ww(ia, ja)*(1 - wa)*(1 - wb) &
+                                        + ww(ia + 1, ja)*wa*(1 - wb) &
+                                        + ww(ia, ja + 1)*(1 - wa)*wb &
+                                        + ww(ia + 1, ja + 1)*wa*wb
+
+                                    if (this%yn_rgt) then
+                                        t(i, j) = &
+                                            tt(ia, ja)*(1 - wa)*(1 - wb) &
+                                            + tt(ia + 1, ja)*wa*(1 - wb) &
+                                            + tt(ia, ja + 1)*(1 - wa)*wb &
+                                            + tt(ia + 1, ja + 1)*wa*wb
+                                    end if
+
                                 end if
 
                             end if
+
                         end if
 
                     end do
@@ -1048,43 +1238,43 @@ contains
 
             select case (this%refl_shape)
                 case ('random', 'perlin', 'custom')
-                    gmax = random(this%nsalt, range=[tp, n2 - tp], seed=this%seed*5, spacing=0.5*tp)
+                    gmax = random(this%nsalt, range=[tp, n2 - tp], seed=safe_seed(int(this%seed, 8)*5), spacing=0.5*tp)
                 case ('gaussian', 'cauchy')
                     if (this%nsalt > this%ng) then
-                        gmax = [mu, random(this%nsalt - this%ng, range=[tp, n2 - tp], seed=this%seed*5, spacing=0.5*tp)]
+                        gmax = [mu, random(this%nsalt - this%ng, range=[tp, n2 - tp], seed=safe_seed(int(this%seed, 8)*5), spacing=0.5*tp)]
                     else
                         gmax = mu
                     end if
             end select
 
             this%salt = zeros(n1, n2)
-            rds = random(this%nsalt, seed=this%seed*14 - 1)
+            rds = random(this%nsalt, seed=safe_seed(int(this%seed, 8)*14 - 1))
             rds = rescale(rds, salt_radius)
-            vds = random(2*this%nsalt, seed=this%seed*15 - 1)
+            vds = random(2*this%nsalt, seed=safe_seed(int(this%seed, 8)*15 - 1))
             vds = rescale(vds, [0.75*this%salt_radius_variation, this%salt_radius_variation])
             pds = rescale(rds, [0.75*this%salt_path_variation, this%salt_path_variation])
 
             ! Build top interface of the salt
             pn%n1 = n2
             pn%octaves = 4
-            pn%seed = this%seed*14 - 2
+            pn%seed = safe_seed(int(this%seed, 8)*14 - 2)
             topz = pn%generate()
             topz = rescale(topz, [0.0, this%salt_top_height])
 
             ! Insert salt bodies
             do isalt = 1, this%nsalt
 
-                nd = nint((1.0 - rand(range=this%salt_top_z, seed=this%seed*15*isalt - 2))*this%n1)
+                nd = nint((1.0 - rand(range=this%salt_top_z, seed=safe_seed(int(this%seed, 8)*15*isalt - 2)))*this%n1)
 
                 ! Salt body boundaries
                 pn%n1 = this%salt_nnode
                 pn%octaves = 4
-                pn%seed = this%seed*15*isalt - 1
+                pn%seed = safe_seed(int(this%seed, 8)*15*isalt - 1)
                 x1 = pn%generate()
 
                 pn%n1 = this%salt_nnode
                 pn%octaves = 4
-                pn%seed = this%seed*16*isalt - 1
+                pn%seed = safe_seed(int(this%seed, 8)*16*isalt - 1)
                 x2 = pn%generate()
 
                 x1 = interp_to(x1, n1, 'pchip')
@@ -1096,7 +1286,7 @@ contains
                 ! Salt body path deviations
                 pn%n1 = n1
                 pn%octaves = 4
-                pn%seed = this%seed*17*isalt - 1
+                pn%seed = safe_seed(int(this%seed, 8)*17*isalt - 1)
                 xs = pn%generate()
                 xs = xs - mean(xs)
                 xs = median_filt(xs, 2)/maxval(xs)*pds(isalt)
@@ -1118,6 +1308,59 @@ contains
                 !$omp end parallel do
 
             end do
+
+        end if
+
+        ! Add karst
+        if (this%yn_karst) then
+
+            block
+
+                type(karst_2d) :: kg
+                real, allocatable, dimension(:, :) :: kvol
+                integer :: nzk
+
+                ! The karst passages are confined to the depth window karst_z;
+                ! generate on a sub-grid spanning [0, karst_z(2)]*n1 with the
+                ! caprock fraction covering [0, karst_z(1)]*n1
+                nzk = clip(nint(this%karst_z(2)*n1), 2, n1)
+                kg%nx = n2
+                kg%nz = nzk
+                kg%n_passages = this%karst_npassage
+                kg%n_ctrl = this%karst_nctrl
+                if (maxval(this%karst_radius) == 0) then
+                    kg%r_mean = rand(range=[0.015, 0.03]*this%n1, seed=safe_seed(int(this%seed, 8)*27 - 1))
+                else
+                    kg%r_mean = rand(range=this%karst_radius, seed=safe_seed(int(this%seed, 8)*27 - 1))
+                end if
+                kg%r_std = this%karst_radius_variation
+                kg%tortuosity = this%karst_tortuosity
+                kg%p_connect = this%karst_connect
+                kg%z_top = 1.0 - this%karst_z(1)/this%karst_z(2)
+                kg%seed = safe_seed(int(this%seed, 8)*29 - 1)
+                kvol = kg%generate()
+
+                this%karst = zeros(n1, n2)
+                !$omp parallel do private(i, j) collapse(2)
+                do j = 1, n2
+                    do i = 1, nzk
+                        if (kvol(i, j) > 0.5) then
+                            vp(i, j) = this%karst_vp
+                            rho(i, j) = this%karst_rho
+                            if (this%yn_elastic) then
+                                vs(i, j) = this%karst_vs
+                            end if
+                            this%karst(i, j) = 1.0
+                            ! Karst carves salt where they overlap
+                            if (this%yn_salt) then
+                                this%salt(i, j) = 0.0
+                            end if
+                        end if
+                    end do
+                end do
+                !$omp end parallel do
+
+            end block
 
         end if
 
@@ -1184,6 +1427,37 @@ contains
 
         end if
 
+        ! Karst
+        if (this%yn_karst) then
+
+            this%karst = this%karst(1:this%n1, :)
+
+            if (this%unconf == 0) then
+
+                if (this%yn_fault) then
+                    where (this%karst == 1)
+                        this%fault = 0
+                        this%fault_dip = 0
+                        this%fault_disp = 0
+                    end where
+                end if
+
+                if (this%yn_rgt) then
+                    where (this%karst == 1)
+                        this%rgt = 0
+                    end where
+                end if
+
+                if (this%yn_facies) then
+                    where (this%karst == 1)
+                        this%facies = 0
+                    end where
+                end if
+
+            end if
+
+        end if
+
         ! Velocity models
         this%vp = vp(1:this%n1, :)
         this%rho = rho(1:this%n1, :)
@@ -1214,6 +1488,9 @@ contains
             end if
             if (this%yn_salt) then
                 this%salt = 0
+            end if
+            if (this%yn_karst) then
+                this%karst = 0
             end if
         end if
 
@@ -1264,6 +1541,9 @@ contains
         if (this%yn_salt) then
             this%salt = zeros(this%n1 + 1, this%n2)
         end if
+        if (this%yn_karst) then
+            this%karst = zeros(this%n1 + 1, this%n2)
+        end if
 
         do i = 1, this%unconf + 1
 
@@ -1275,8 +1555,13 @@ contains
                 g(i)%yn_salt = .true.
             end if
 
+            g(i)%yn_karst = .false.
+            if (this%yn_karst .and. i == this%unconf + 1) then
+                g(i)%yn_karst = .true.
+            end if
+
             if (this%seed /= -1) then
-                g(i)%seed = g(i)%seed*i
+                g(i)%seed = safe_seed(int(g(i)%seed, 8)*i)
             end if
 
             if (i <= this%unconf) then
@@ -1304,21 +1589,32 @@ contains
         end do
 
         allocate (uff(1:this%unconf + 1))
-        ufz = random(this%unconf, range=this%unconf_z, seed=this%seed*31)
+        ufz = random(this%unconf, range=this%unconf_z, seed=safe_seed(int(this%seed, 8)*31))
         ufz = sort(ufz, order=1)
         do i = 1, this%unconf
 
-            ! Use Perlin noise to generate unconformity surfaces
-            q%n1 = this%n2
-            q%octaves = 5
-            q%seed = g(i)%seed*41*i
-            uff(i)%array = q%generate()
+            select case (this%unconf_shape)
+
+                case ('meander_channel', 'meander_canyon', 'drainage_channel', 'drainage_canyon')
+                    ! The unconformity surface is a cross-flow section of the
+                    ! erosional topography of a geomorphological simulation
+                    call unconformity_topography_2d(this, g(i)%seed, i, uff(i)%array)
+
+                case default
+                    ! Use Perlin noise to generate unconformity surfaces
+                    q%n1 = this%n2
+                    q%octaves = 5
+                    q%seed = safe_seed(int(g(i)%seed, 8)*41*i)
+                    uff(i)%array = q%generate()
+
+            end select
+
             if (this%unconf_smooth > 0) then
                 uff(i)%array = gauss_filt(uff(i)%array, this%unconf_smooth)
             end if
 
             uff(i)%array = rescale(uff(i)%array, &
-                [0.0, rand(range=this%unconf_height, seed=g(i)%seed*51*i)]) + ufz(i)*this%n1
+                [0.0, rand(range=this%unconf_height, seed=safe_seed(int(g(i)%seed, 8)*51*i))]) + ufz(i)*this%n1
 
         end do
 
@@ -1349,6 +1645,9 @@ contains
         if (this%yn_salt) then
             this%salt = g(this%unconf + 1)%salt
         end if
+        if (this%yn_karst) then
+            this%karst = g(this%unconf + 1)%karst
+        end if
 
         do iconf = this%unconf, 1, -1
 
@@ -1375,6 +1674,9 @@ contains
                             if (this%yn_salt .and. this%salt_before_unconf) then
                                 this%salt(i, j) = 0.0
                             end if
+                            if (this%yn_karst .and. this%karst_before_unconf) then
+                                this%karst(i, j) = 0.0
+                            end if
                         end if
                     end do
                 else
@@ -1384,6 +1686,9 @@ contains
                             this%rho(i, j) = g(iconf)%rho(i, j)
                             if (this%yn_salt .and. this%salt_before_unconf) then
                                 this%salt(i, j) = 0.0
+                            end if
+                            if (this%yn_karst .and. this%karst_before_unconf) then
+                                this%karst(i, j) = 0.0
                             end if
                         end if
                     end do
@@ -1471,6 +1776,18 @@ contains
             end if
         end if
 
+        if (this%yn_karst) then
+            where (this%karst == 1)
+                this%vp = this%karst_vp
+                this%rho = this%karst_rho
+            end where
+            if (this%yn_elastic) then
+                where (this%karst == 1)
+                    this%vs = this%karst_vs
+                end where
+            end if
+        end if
+
         vp = this%vp
         rho = this%rho
         if (this%yn_elastic) then
@@ -1500,6 +1817,10 @@ contains
 
         if (this%yn_salt) then
             this%salt = this%salt(1:this%n1, :)
+        end if
+
+        if (this%yn_karst) then
+            this%karst = this%karst(1:this%n1, :)
         end if
 
         ! Rescale RGT to [0, 1]
@@ -1549,6 +1870,31 @@ contains
 
         end if
 
+        ! Process karst
+        if (this%yn_karst) then
+
+            if (this%yn_fault) then
+                where (this%karst == 1)
+                    this%fault = 0
+                    this%fault_dip = 0
+                    this%fault_disp = 0
+                end where
+            end if
+
+            if (this%yn_rgt) then
+                where (this%karst == 1)
+                    this%rgt = 0
+                end where
+            end if
+
+            if (this%yn_facies) then
+                where (this%karst == 1)
+                    this%facies = 0
+                end where
+            end if
+
+        end if
+
         ! Finally, generate image
         if (this%yn_elastic) then
             call this%generate_image_elastic(vp, vs, rho)
@@ -1561,6 +1907,130 @@ contains
         end if
 
     end subroutine generate_2d_unconformal_geological_model
+
+    !
+    !> Generate the topography of a channel/canyon/drainage-type unconformity
+    !> curve for a 2D model. A map-view simulation is run on an auxiliary grid
+    !> with the flow forced along the auxiliary x-axis, and a random cross-flow
+    !> column of the erosional depth map, which typically crosses the channel
+    !> belt multiple times, is used as the 1D unconformity topography.
+    !
+    subroutine unconformity_topography_2d(this, seed, isurf, surf)
+
+        type(rgm2_curved), intent(in) :: this
+        integer, intent(in) :: seed, isurf
+        real, allocatable, dimension(:), intent(out) :: surf
+
+        type(meandering_channel) :: mc
+        type(meandering_canyon) :: my
+        type(drainage_channel) :: dc
+        type(drainage_canyon) :: dy
+        real, allocatable, dimension(:, :) :: dm
+        real :: wf
+        integer :: nlev, naux, ix
+
+        ! Reference (calibrated) configurations of the meandering channel and
+        ! canyon: at length = *_length_ref with *_nbends_ref seed bends, the
+        ! migration develops well-formed gooseneck meanders. The mappings
+        ! below scale unconf_channel_length relative to these single
+        ! calibration points
+        real, parameter :: mc_length_ref = 25000.0
+        real, parameter :: mc_nbends_ref = 30.0
+        real, parameter :: my_length_ref = 5000.0
+        real, parameter :: my_nbends_ref = 20.0
+        ! Minimum accepted channel length; below this the centerline has too
+        ! few nodes for the migration to develop realistic meanders
+        real, parameter :: length_min = 10000.0
+
+        wf = rand(range=this%unconf_channel_width, seed=safe_seed(int(seed, 8)*91 + isurf))
+
+        ! Auxiliary along-flow grid size
+        naux = max(this%n2, 128)
+
+        select case (this%unconf_shape)
+
+            case ('meander_channel')
+                mc%nx = naux
+                mc%ny = this%n2
+                mc%nz = 64
+                ! The length/W ratio sets how many meander bends span the
+                ! map. The migration width W is capped at its calibrated
+                ! value so that longer channels develop more bends of the
+                ! same shape (the migration dynamics are width-invariant),
+                ! while shorter channels shrink W proportionally to keep
+                ! >= ~80 centerline nodes; the seed sine's wavelength
+                ! (length/n_bends) is held at its calibrated value; the
+                ! channel is rendered with W_render so that the on-grid width
+                ! is approximately the requested fraction of the lateral extent
+                mc%length = max(this%unconf_channel_length, length_min)
+                mc%W = 0.025*min(mc%length, mc_length_ref)
+                mc%W_render = wf*mc%length
+                mc%W_shape = 3
+                mc%n_bends = max(5, nint(mc_nbends_ref*mc%length/mc_length_ref))
+                mc%n_iter = nint(1500*this%unconf_channel_sinuosity)
+                mc%terrain_bg = this%unconf_topo*(mc%nz - 1.0)
+                mc%seed = safe_seed(int(seed, 8)*61 + isurf)
+                mc%orient = 0
+                mc%yn_depth_only = .true.
+                call mc%generate
+                dm = mc%depth_map
+
+            case ('meander_canyon')
+                my%nx = naux
+                my%ny = this%n2
+                my%nz = 0
+                ! As for the channel, W is capped at its calibrated value so
+                ! that a longer canyon adds bends rather than changing the
+                ! migration dynamics
+                my%length = (my_length_ref/mc_length_ref)*max(this%unconf_channel_length, length_min)
+                my%W = 0.02*min(my%length, my_length_ref)
+                my%W_canyon = 0.5*wf*my%length
+                my%n_bends = max(5, nint(my_nbends_ref*my%length/my_length_ref))
+                my%n_iter = nint(clip(4000*this%unconf_channel_sinuosity, 2000.0, 6000.0))
+                nlev = max(2, nint(my%n_iter/(my%save_every*1.0)))
+                my%terrain_bg = this%unconf_topo*(nlev - 1.0)
+                my%seed = safe_seed(int(seed, 8)*61 + isurf)
+                my%orient = 0
+                my%yn_depth_only = .true.
+                call my%generate
+                dm = my%depth_map
+
+            case ('drainage_channel')
+                dc%nx = naux
+                dc%ny = this%n2
+                dc%nz = 64
+                ! Channels: relatively thin and densely distributed
+                dc%W_max = 0.5*wf*this%n2
+                dc%D_max = 48.0
+                dc%channel_frac = rand(range=this%unconf_channel_density, seed=safe_seed(int(seed, 8)*81 + isurf))
+                dc%terrain_bg = this%unconf_topo*(dc%nz - 1.0)
+                dc%seed = safe_seed(int(seed, 8)*61 + isurf)
+                dc%orient = 2
+                dc%yn_depth_only = .true.
+                call dc%generate
+                dm = dc%depth_map
+
+            case ('drainage_canyon')
+                dy%nx = naux
+                dy%ny = this%n2
+                dy%nz = 64
+                ! Canyons: major and few - full width but sparse network
+                dy%W_max = wf*this%n2
+                dy%channel_frac = 0.25*rand(range=this%unconf_channel_density, seed=safe_seed(int(seed, 8)*81 + isurf))
+                dy%terrain_bg = this%unconf_topo*(dy%nz - 1.0)
+                dy%seed = safe_seed(int(seed, 8)*61 + isurf)
+                dy%orient = 2
+                dy%yn_depth_only = .true.
+                call dy%generate
+                dm = dy%depth_map
+
+        end select
+
+        ! Take a random cross-flow column as the unconformity topography
+        ix = clip(nint(rand(range=[0.1, 0.9], seed=safe_seed(int(seed, 8)*101 + isurf))*naux), 1, naux)
+        surf = dm(:, ix)
+
+    end subroutine unconformity_topography_2d
 
 end module geological_model_2d_curved
 

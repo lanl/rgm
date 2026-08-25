@@ -1,5 +1,5 @@
 #
-# © 2024-2025. Triad National Security, LLC. All rights reserved.
+# © 2024-2026. Triad National Security, LLC. All rights reserved.
 #
 # This program was produced under U.S. Government contract 89233218CNA000001
 # for Los Alamos National Laboratory (LANL), which is operated by
@@ -8,7 +8,7 @@
 # Triad National Security, LLC, and the U.S. Department of Energy/National
 # Nuclear Security Administration. The Government is granted for itself and
 # others acting on its behalf a nonexclusive, paid-up, irrevocable worldwide
-# license in this material to reproduce, prepare. derivative works,
+# license in this material to reproduce, prepare derivative works,
 # distribute copies to the public, perform publicly and display publicly,
 # and to permit others to do so.
 #
@@ -25,12 +25,12 @@ moddir = $(PWD)/../lib
 # Dependencies
 common = \
     module_geological_model_utility.o \
-    module_geological_model_2d.o \
-    module_geological_model_3d.o \
-    module_geological_model_2d_elastic.o \
-    module_geological_model_3d_elastic.o \
+    module_geological_model_meander.o \
+    module_geological_model_drainage.o \
+    module_geological_model_karst.o \
     module_geological_model_2d_curved.o \
     module_geological_model_3d_curved.o \
+    module_geological_model_c.o \
     module_geological_model.o
 
 objlib = $(addprefix $(objdir)/, $(common))
@@ -56,6 +56,14 @@ $(objdir)/%.o : $(PWD)/%.f90
 # link
 $(lib): $(objlib)
 	$(ll) rcs $@ $^
+
+# shared library for the Python interface
+solib = $(moddir)/librgm.so
+
+so: makedir $(solib)
+
+$(solib): $(objlib)
+	$(fc) -shared -o $@ $^ $(lflags)
 
 # make directory
 makedir:

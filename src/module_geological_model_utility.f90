@@ -1,5 +1,5 @@
 !
-! © 2024-2025. Triad National Security, LLC. All rights reserved.
+! © 2024-2026. Triad National Security, LLC. All rights reserved.
 !
 ! This program was produced under U.S. Government contract 89233218CNA000001
 ! for Los Alamos National Laboratory (LANL), which is operated by
@@ -8,7 +8,7 @@
 ! Triad National Security, LLC, and the U.S. Department of Energy/National
 ! Nuclear Security Administration. The Government is granted for itself and
 ! others acting on its behalf a nonexclusive, paid-up, irrevocable worldwide
-! license in this material to reproduce, prepare. derivative works,
+! license in this material to reproduce, prepare derivative works,
 ! distribute copies to the public, perform publicly and display publicly,
 ! and to permit others to do so.
 !
@@ -103,9 +103,37 @@ module geological_model_utility
     public :: elastic_reflection_coefs
     public :: random_mask_smooth
     public :: random_circular
+    public :: safe_seed
 
 contains
 
+    !
+    !> Fold a derived seed into [0, 2147483647].
+    !> t is 64-bit so the caller's arithmetic cannot overflow. Widen the
+    !> first operand at the call site:
+    !>     seed=safe_seed(int(this%seed, 8)*27*fi - 1)
+    !
+    pure function safe_seed(t) result(s)
+
+        integer(8), intent(in) :: t
+        integer :: s
+
+        if (t < 0) then
+            ! negative means the caller wants pure randomness
+            s = -1
+        else if (t <= 2147483647_8) then
+            ! already in range, leave it alone
+            s = int(t)
+        else
+            ! too big, fold it back into range
+            s = int(modulo(t, 2147483648_8))
+        end if
+
+    end function safe_seed
+
+    !
+    ! Generate a discrete random circular curve
+    !
     function random_circular(n, r, dr, alpha, smooth, seed) result(m)
 
         integer :: n
@@ -347,7 +375,7 @@ contains
         w = zeros(n1, n2)
         do i = 1, size(amp)
 
-            r = gauss_filt(random(n1, n2, seed=sd*i, dist='normal'), [gs(i), gs(i)])
+            r = gauss_filt(random(n1, n2, seed=safe_seed(int(sd, 8)*i), dist='normal'), [gs(i), gs(i)])
             r = r - mean(r)
             w = w + r/maxval(abs(r))*amp(i)
 
@@ -389,7 +417,7 @@ contains
         w = zeros(n1, n2, n3)
         do i = 1, size(amp)
 
-            r = gauss_filt(random(n1, n2, n3, seed=sd*i, dist='normal'), [gs(i), gs(i), gs(i)])
+            r = gauss_filt(random(n1, n2, n3, seed=safe_seed(int(sd, 8)*i), dist='normal'), [gs(i), gs(i), gs(i)])
             r = r - mean(r)
             w = w + r/maxval(abs(r))*amp(i)
 
@@ -541,7 +569,7 @@ contains
         noise = zeros(nx)
         x = regspace(0.0, 1.0, nx - 1.0)/nx*periodx
 
-        gd = random_permute(binarize(random(ceiling(periodx) + 1, seed=seed), 0.5, [-1.0, 1.0]), seed=seed + 1)
+        gd = random_permute(binarize(random(ceiling(periodx) + 1, seed=seed), 0.5, [-1.0, 1.0]), seed=safe_seed(int(seed, 8) + 1))
 
         !$omp parallel do private(i, x0, x1, dx, g0, g1, sx)
         do i = 1, nx
@@ -579,7 +607,7 @@ contains
 
         n1 = this%n1
         period1 = this%periods1
-        seed = this%seed*20
+        seed = safe_seed(int(this%seed, 8)*20)
         octaves = this%octaves
         persistence = this%persistence
         lacunarity = this%lacunarity
@@ -598,7 +626,7 @@ contains
         do octave = 1, octaves
 
             ! Generate Perlin noise for the current octave
-            noise = perlin_1d(period1*frequency, nx, seed + octave)
+            noise = perlin_1d(period1*frequency, nx, safe_seed(int(seed, 8) + octave))
 
             ! Add the current octave to the fractal noise
             fractal_noise = fractal_noise + amplitude*noise
@@ -695,7 +723,7 @@ contains
         n2 = this%n2
         periods1 = this%periods1
         periods2 = this%periods2
-        seed = this%seed*20
+        seed = safe_seed(int(this%seed, 8)*20)
         octaves = this%octaves
         persistence = this%persistence
         lacunarity = this%lacunarity
@@ -717,7 +745,7 @@ contains
         do octave = 1, octaves
 
             ! Generate Perlin noise for the current octave
-            noise = perlin_2d(periods1*frequency, periods2*frequency, nx, ny, seed + octave)
+            noise = perlin_2d(periods1*frequency, periods2*frequency, nx, ny, safe_seed(int(seed, 8) + octave))
 
             ! Add the current octave to the fractal noise
             fractal_noise = fractal_noise + amplitude*noise
@@ -759,7 +787,7 @@ contains
         my = ceiling(periody) + 1
         mz = ceiling(periodz) + 1
         r = random(mx, my, mz, seed=seed)*const_pi
-        t = random(mx, my, mz, seed=seed*2)*2*const_pi
+        t = random(mx, my, mz, seed=safe_seed(int(seed, 8)*2))*2*const_pi
         gd = zeros(mx, my, mz, 3)
 
         !$omp parallel do private(i, j, k)
@@ -836,7 +864,7 @@ contains
         periods1 = this%periods1
         periods2 = this%periods2
         periods3 = this%periods3
-        seed = this%seed*20
+        seed = safe_seed(int(this%seed, 8)*20)
         octaves = this%octaves
         persistence = this%persistence
         lacunarity = this%lacunarity
@@ -861,7 +889,7 @@ contains
         do octave = 1, octaves
 
             ! Generate Perlin noise for the current octave
-            noise = perlin_3d(periods1*frequency, periods2*frequency, periods3*frequency, nx, ny, nz, seed + octave)
+            noise = perlin_3d(periods1*frequency, periods2*frequency, periods3*frequency, nx, ny, nz, safe_seed(int(seed, 8) + octave))
 
             ! Add the current octave to the fractal noise
             fractal_noise = fractal_noise + amplitude*noise
