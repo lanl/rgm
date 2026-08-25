@@ -8,6 +8,51 @@ program test
     implicit none
 
     ! ==================================================================
+    ! Spatially varying (diminishing) fault displacement
+
+    block
+
+        type(rgm2_curved) :: p
+
+        p%n1 = 128
+        p%n2 = 401
+        p%lwv = 0.2
+        p%lwh = 0.2
+        p%refl_shape = 'perlin'
+        p%refl_smooth = 3
+        p%refl_height = [0.0, 20.0]
+        p%nl = 20
+        p%nf = 5
+        p%dip = [60.0, 120.0]
+        p%disp = [15.0, 25.0]
+        p%delta_dip = [0.0, 20.0]
+        ! The displacement of each fault varies along the fault following a
+        ! slip patch, diminishing to zero at the fault tips, so the faults can
+        ! die out within the model; fault_disp stores the varying displacements
+        p%yn_vary_disp = .true.
+        p%disp_radius_dip = [0.4, 0.7]
+        p%noise_level = 0.01
+        p%psf_sigma = [10.0, 1.0]
+        p%seed = 22334455
+        call p%generate
+        call output_array(p%vp, './example_2d_vp_vdisp_1.bin')
+        call output_array(p%image, './example_2d_image_vdisp_1.bin')
+        call output_array(p%fault, './example_2d_fault_vdisp_1.bin')
+        call output_array(p%fault_disp, './example_2d_fdisp_vdisp_1.bin')
+
+        ! Additionally decay the displacement away from the faults
+        ! (fault drag, rollover, and blind-fault folding)
+        p%yn_disp_decay = .true.
+        p%disp_decay_width = [0.3, 0.5]
+        call p%generate
+        call output_array(p%vp, './example_2d_vp_vdisp_decay_1.bin')
+        call output_array(p%image, './example_2d_image_vdisp_decay_1.bin')
+        call output_array(p%fault, './example_2d_fault_vdisp_decay_1.bin')
+        call output_array(p%fault_disp, './example_2d_fdisp_vdisp_decay_1.bin')
+
+    end block
+
+    ! ==================================================================
     ! Types of unconformities
 
     block

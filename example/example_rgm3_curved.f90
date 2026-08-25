@@ -8,6 +8,121 @@ program test
     implicit none
 
     ! ==================================================================
+    ! Strike-varying faults with spatially varying (diminishing) displacement
+
+    block
+
+        type(rgm3_curved) :: p
+
+        p%n1 = 171
+        p%n2 = 251
+        p%n3 = 251
+        p%lwv = 0.4
+        p%lwh = 0.2
+        p%refl_shape = 'gaussian'
+        p%refl_shape_top = 'perlin'
+        p%refl_smooth = 0
+        p%refl_smooth_top = 0
+        p%refl_sigma2 = [50, 70]
+        p%refl_sigma3 = [50, 70]
+        p%refl_height = [0.0, 70.0]
+        p%refl_height_top = [0.0, 4.0]
+        p%nl = 30
+        p%nf = 5
+        p%dip = [60.0, 120.0]
+        p%disp = [15.0, 25.0]
+        p%delta_dip = [0.0, 15.0]
+        p%delta_strike = [15.0, 25.0]
+        ! The displacement of each fault varies on the fault surface following
+        ! an elliptical slip patch, diminishing to zero at the fault tip line,
+        ! so the faults die out within the model rather than cutting through
+        ! the entire volume; fault_disp stores the varying displacements
+        p%yn_vary_disp = .false.
+        p%disp_radius_strike = [0.4, 0.6]
+        p%disp_radius_dip = [0.5, 0.8]
+        p%noise_level = 0.01
+        p%psf_sigma = [10.0, 1.0, 1.0]
+        p%yn_rgt = .true.
+        p%yn_disp_decay = .false.
+        call p%generate
+        call output_array(p%vp, './example_3d_vp_vstrike_1.bin')
+        call output_array(p%rgt, './example_3d_rgt_vstrike_1.bin')
+        call output_array(p%image, './example_3d_image_vstrike_1.bin')
+        call output_array(p%fault, './example_3d_fault_vstrike_1.bin')
+        call output_array(p%fault_disp, './example_3d_fdisp_vstrike_1.bin')
+        call output_array(p%fault_strike, './example_3d_fstrike_vstrike_1.bin')
+
+
+        p%yn_vary_disp = .true.
+        p%yn_disp_decay = .false.
+        call p%generate
+        call output_array(p%vp, './example_3d_vp_vdisp_1.bin')
+        call output_array(p%rgt, './example_3d_rgt_vdisp_1.bin')
+        call output_array(p%image, './example_3d_image_vdisp_1.bin')
+        call output_array(p%fault, './example_3d_fault_vdisp_1.bin')
+        call output_array(p%fault_disp, './example_3d_fdisp_vdisp_1.bin')
+        call output_array(p%fault_strike, './example_3d_fstrike_vdisp_1.bin')
+
+
+        ! Additionally decay the displacement away from the faults along the
+        ! fault normal, mimicking the deformation halo of a finite slip patch
+        ! (fault drag, rollover, and blind-fault folding); the displacement at
+        ! the fault surfaces is unaffected
+        p%yn_vary_disp = .true.
+        p%yn_disp_decay = .true.
+        p%disp_decay_width = [0.3, 0.5]
+        call p%generate
+        call output_array(p%vp, './example_3d_vp_decay_1.bin')
+        call output_array(p%rgt, './example_3d_rgt_decay_1.bin')
+        call output_array(p%image, './example_3d_image_decay_1.bin')
+        call output_array(p%fault, './example_3d_fault_decay_1.bin')
+        call output_array(p%fault_disp, './example_3d_fdisp_decay_1.bin')
+        call output_array(p%fault_strike, './example_3d_fstrike_decay_1.bin')
+
+    end block
+
+    ! ==================================================================
+    ! Strike-slip fault
+
+    block
+
+        type(rgm3_curved) :: p
+
+        p%n1 = 171
+        p%n2 = 251
+        p%n3 = 251
+        p%lwv = 0.5
+        p%lwh = 0.4
+        p%refl_shape = 'cauchy'
+        p%ng = 4
+        p%refl_sigma2 = [40.0, 60.0]
+        p%refl_sigma3 = [30.0, 50.0]
+        p%refl_shape_top = 'random'
+        p%refl_smooth = 0
+        p%refl_smooth_top = 10
+        p%refl_slope = [20.0, -20.0]
+        p%refl_slope_top = [-2.0, -5.0]
+        p%refl_height = [0.0, 70.0]
+        p%refl_height_top = [0.0, 5.0]
+        p%nl = 35
+        p%nf = 2
+        p%strike = [20.0, 30.0]
+        p%rake = [0.0, 0.0]
+        p%disp = [20.0, 30.0]
+        p%delta_dip = [0.0, 10.0]
+        p%noise_level = 0.02
+        p%psf_sigma = [10.0, 1.0, 1.0]
+        p%seed = 123456
+        p%yn_rgt = .true.
+        call p%generate
+
+        call output_array(p%vp, './example_3d_vp_strikeslip_1.bin')
+        call output_array(p%rgt, './example_3d_rgt_strikeslip_1.bin')
+        call output_array(p%image, './example_3d_image_strikeslip_1.bin')
+
+    end block
+
+    ! ==================================================================
     ! Scalability test
 
     block
@@ -790,7 +905,7 @@ program test
     end block
 
     ! ==================================================================
-    ! Strike-slip fault
+    ! Strike-varying (curved in map view) faults
 
     block
 
@@ -799,34 +914,34 @@ program test
         p%n1 = 171
         p%n2 = 251
         p%n3 = 251
-        p%lwv = 0.5
-        p%lwh = 0.4
-        p%refl_shape = 'cauchy'
-        p%ng = 4
-        p%refl_sigma2 = [40.0, 60.0]
-        p%refl_sigma3 = [30.0, 50.0]
-        p%refl_shape_top = 'random'
-        p%refl_smooth = 0
-        p%refl_smooth_top = 10
-        p%refl_slope = [20.0, -20.0]
-        p%refl_slope_top = [-2.0, -5.0]
-        p%refl_height = [0.0, 70.0]
-        p%refl_height_top = [0.0, 5.0]
-        p%nl = 35
-        p%nf = 2
-        p%strike = [20.0, 30.0]
-        p%rake = [0.0, 0.0]
-        p%disp = [20.0, 30.0]
+        p%lwv = 0.4
+        p%lwh = 0.3
+        p%refl_shape = 'perlin'
+        p%refl_shape_top = 'perlin'
+        p%refl_smooth = 3
+        p%refl_smooth_top = 3
+        p%refl_slope = [20.0, -10.0]
+        p%refl_slope_top = [-2.0, 3.0]
+        p%refl_height = [0.0, 50.0]
+        p%refl_height_top = [0.0, 4.0]
+        p%nl = 30
+        p%nf = 5
+        p%noise_level = 0.025
+        p%disp = [5.0, 12.0]
         p%delta_dip = [0.0, 10.0]
-        p%noise_level = 0.02
+        ! The strike of each fault varies smoothly along the fault
+        ! within +/- 20 to 30 degrees w.r.t. the fault's base strike
+        p%delta_strike = [20.0, 30.0]
         p%psf_sigma = [10.0, 1.0, 1.0]
-        p%seed = 123456
+        p%seed = 123
         p%yn_rgt = .true.
         call p%generate
-
-        call output_array(p%vp, './example_3d_vp_strikeslip_1.bin')
-        call output_array(p%rgt, './example_3d_rgt_strikeslip_1.bin')
-        call output_array(p%image, './example_3d_image_strikeslip_1.bin')
+        call output_array(p%vp, './example_3d_vp_vstrike_1.bin')
+        call output_array(p%rgt, './example_3d_rgt_vstrike_1.bin')
+        call output_array(p%image, './example_3d_image_vstrike_1.bin')
+        call output_array(p%fault, './example_3d_fault_vstrike_1.bin')
+        call output_array(p%fault_dip, './example_3d_fdip_vstrike_1.bin')
+        call output_array(p%fault_strike, './example_3d_fstrike_vstrike_1.bin')
 
     end block
 
