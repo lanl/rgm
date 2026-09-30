@@ -36,7 +36,10 @@ rgt = p.rgt
 karst = p.karst
 ```
 
-Parameter names are identical to the Fortran derived-type components of
+The classes `rgm.rgm2` and `rgm.rgm3` are in fact the Fortran types
+`rgm2_curved` and `rgm3_curved`, not the legacy Fortran types `rgm2` and
+`rgm3`, which the Python interface does not provide. Parameter names are
+identical to the Fortran derived-type components of
 `rgm2_curved`/`rgm3_curved` (see `doc/README.md`). Scalars, booleans,
 strings, and 1D numeric lists/arrays are supported; the custom input
 arrays (`refl`, `refl_top`, custom `psf`) are not exposed through the

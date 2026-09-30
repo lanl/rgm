@@ -20,6 +20,9 @@
 module librgm
 
     use geological_model_utility
+    ! Frozen legacy generators rgm2 and rgm3 of RGM v1.0.0
+    use geological_model_2d
+    use geological_model_3d
     use geological_model_meander
     use geological_model_drainage
     use geological_model_karst

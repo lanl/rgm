@@ -8,12 +8,12 @@ The work is supported by Los Alamos National Laboratory (LANL) Laboratory Direct
 The codes were approved for public release under LANL approval reference O4778.
 
 Recent changes: 
-- The legacy generators (`rgm2`, `rgm3`, `rgm2_elastic`, `rgm3_elastic`) are removed. If you need these legacy generators, please download v1.0.0 from the history releases and compile. The legacy generators will not be included or maintained from RGM v2.0.
+- The legacy generators `rgm2_elastic` and `rgm3_elastic` are removed; if you need them, please download v1.0.0 from the history releases and compile. The Fortran types `rgm2` and `rgm3` are outdated and will not be maintained any more. To keep backward compatibility, RGM v2.0 still includes them, unchanged from RGM v1.0.0, so that programs written for them still compile and reproduce their models. The only exception is `refl_shape = 'perlin'` with a seed above about 1.07e8, where the Perlin noise seeds differ. New work should use `rgm2_curved` and `rgm3_curved`.
 - `rgm2_curved` (2D) and `rgm3_curved` (3D) are RGM's standard API, and both generate acoustic and elastic models. They generalize the fault geometry: strike-varying faults (`delta_strike`), spatially varying (diminishing) fault displacement with fault tips inside the model (`yn_vary_disp`), and displacement decay away from faults (`yn_disp_decay`, drag/rollover).
 - Geomorphological unconformity surfaces: `unconf_shape` can be `meander_channel`, `meander_canyon`, `drainage_channel`, or `drainage_canyon`, generating erosional surfaces from meandering-river and dendritic-drainage simulations, with control over channel width, sinuosity, centerline length, drainage density, and interfluve topography.
 - Karst cave systems (`yn_karst`): tube-network caves inserted into the medium parameter models like salt bodies, with a voxel-wise karst mask, a depth window (`karst_z`), and a connection probability (`karst_connect`) that spans scattered isolated caves to a single extensive multi-level network.
 - The standalone geomorphological generators (`meandering_channel`, `meandering_canyon`, `drainage_channel`, `drainage_canyon`, `karst_2d`, `karst_3d`) are accessible directly through `librgm`.
-- A Python interface: see [python/README.md](python/README.md) for details. The python interface can be used as, for instance:
+- A Python interface: see [python/README.md](python/README.md) for details. Its classes `rgm.rgm2` and `rgm.rgm3` are in fact the Fortran types `rgm2_curved` and `rgm3_curved`, not the legacy Fortran types `rgm2` and `rgm3`, which the Python interface does not provide. The python interface can be used as, for instance:
 ```python
 import rgm
 
