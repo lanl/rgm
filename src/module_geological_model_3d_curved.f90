@@ -903,7 +903,7 @@ contains
 
                     rt = zeros(n2, n3)
                     do i = 1, this%ng
-                        select case (this%refl_shape)
+                        select case (this%refl_shape_top)
                             case ('gaussian')
                                 rt = rt + rescale(gaussian(linspace(0.0, n2 - 1.0, n2), linspace(0.0, n3 - 1.0, n3), &
                                     [mu2(i) + ne2, mu3(i) + ne3], [sigma2(i), sigma3(i)], gtheta(i)), [0.0, height(i)])

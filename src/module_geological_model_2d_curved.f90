@@ -817,7 +817,7 @@ contains
 
                     rt = zeros(n2)
                     do i = 1, this%ng
-                        select case (this%refl_shape)
+                        select case (this%refl_shape_top)
                             case ('gaussian')
                                 rt = rt + rescale(gaussian(linspace(0.0, n2 - 1.0, n2), mu(i) + ne2, sigma(i)), [0.0, height(i)])
                             case ('cauchy')
