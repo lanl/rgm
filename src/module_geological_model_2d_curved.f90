@@ -44,6 +44,7 @@ module geological_model_2d_curved
 
     use libflit
     use geological_model_utility
+    use geological_model_realism
     use geological_model_meander
     use geological_model_drainage
     use geological_model_karst
@@ -141,6 +142,21 @@ module geological_model_2d_curved
         real :: lwh = 0.1
         !> Secondary reflector smoothing
         real :: secondary_refl_smooth = 10.0
+        !> Fold-train reflector shape (refl_shape = 'fold'), see doc/README.md: ranges of
+        !> the mean wavelength ([0, 0] = [0.2, 0.5]*n2), crest asymmetry ([-0.25, 0.25])
+        !> and vergence magnitude ([0, 0.9]); fold-to-fold wavelength and amplitude
+        !> drifts; vergence form ('smooth' or 'limb')
+        real, dimension(1:2) :: refl_fold_lambda = [0.0, 0.0]
+        real, dimension(1:2) :: refl_fold_crest = [-0.25, 0.25]
+        real, dimension(1:2) :: refl_fold_vergence = [0.0, 0.5]
+        real :: refl_fold_lambda_drift = 0.4
+        real :: refl_fold_amp_drift = 0.5
+        character(len=12) :: refl_fold_mode = 'smooth'
+        !> Gaussian/Cauchy bumps: range of the skew magnitude ([0, 0] = symmetric),
+        !> common vergence of the bumps, and relative amplitude of a smooth background
+        real, dimension(1:2) :: refl_skew = [0.0, 0.0]
+        logical :: refl_skew_common = .false.
+        real :: refl_background = 0.0
 
         !> Whether or not to compute relative geological time
         !> if = .true., the array rgt will be filled with computed RGT
@@ -171,6 +187,24 @@ module geological_model_2d_curved
         !> Convolve the psf with noise as well in addition to reflector image
         !> If = .false., then noise will be added after reflector-psf convolution
         logical :: yn_conv_noise = .false.
+        !> Image options, see doc/README.md: dip-independent imaging (isotropic PSF and
+        !> dip-normalized reflectivity), wavelet frequency at the bottom (0 = f0),
+        !> illumination gain (log standard deviation, correlation length), trace jitter
+        !> (smooth and random static shifts, trace gain)
+        logical :: yn_dip_independent = .false.
+        real :: f0_bottom = 0.0
+        real :: illum_level = 0.0
+        real :: illum_smooth = 30.0
+        real, dimension(1:2) :: jitter_shift = [0.0, 0.0]
+        real :: jitter_gain = 0.0
+        !> For noise_type = 'migration' (noise_level = noise/image RMS ratio): weights of
+        !> the worm, swing and background components; along-layer length of the worms;
+        !> dip range, number of dip families and direction ('dual' or 'single') of the swings
+        real, dimension(1:3) :: noise_mix = [0.35, 0.30, 0.15]
+        real :: noise_worm_length = 10.0
+        real, dimension(1:2) :: noise_swing_dip = [25.0, 75.0]
+        integer :: noise_swing_nfam = 2
+        character(len=12) :: noise_swing_direction = 'dual'
         !> Set faults to be with (quasi) regular spacing and dips
         logical :: yn_regular_fault = .false.
         !> For regularly spaced faults, whether to group faults with distinct dips into a group in space
@@ -311,6 +345,9 @@ module geological_model_2d_curved
         procedure, private :: create_psf
         procedure, private :: generate_image
         procedure, private :: generate_image_elastic
+        procedure, private :: layer_dip_cosine
+        procedure, private :: conv_depth_varying
+        procedure, private :: migration_noise
         procedure, public :: generate => generate_2d
 
     end type rgm2_curved
@@ -337,10 +374,13 @@ contains
             f0 = this%f0
         end if
 
+        ! The wavelet and the PSF are centered at sample n/2 + 1 (integer division)
+        ! along each axis, the sample that conv(..., 'same') aligns with the input,
+        ! so the image is not shifted relative to the model when a size is even
         wavelet = zeros(n1)
         !$omp parallel do private(i, wt)
         do i = 1, n1
-            wt = (i - 1.0 - (n1 - 1.0)/2.0)*this%dt
+            wt = (i - 1.0 - real(n1/2))*this%dt
             select case (this%wave)
                 case ('ricker')
                     wavelet(i) = ricker_wavelet(wt, f0)
@@ -360,7 +400,7 @@ contains
 
         if (this%wave == 'delta') then
             wavelet = 0
-            wavelet((n1 + 1)/2) = 1.0
+            wavelet(n1/2 + 1) = 1.0
             if (allocated(this%wave_filt_freqs)) then
                 call assert(size(this%wave_filt_freqs) == size(this%wave_filt_amps))
                 wavelet = fourier_filt(wavelet, this%dt, this%wave_filt_freqs, this%wave_filt_amps)
@@ -376,7 +416,7 @@ contains
             if (this%psf_sigma(1) == 0) then
                 !$omp parallel do private(i)
                 do i = 1, n1
-                    psf1(i) = exp(-0.5*(i - 1.0 - (n1 - 1.0)/2.0)**2)
+                    psf1(i) = exp(-0.5*(i - 1.0 - real(n1/2))**2)
                 end do
                 !$omp end parallel do
                 where (psf1 < maxval(psf1))
@@ -385,14 +425,14 @@ contains
             else
                 !$omp parallel do private(i)
                 do i = 1, n1
-                    psf1(i) = exp(-0.5*(i - 1.0 - (n1 - 1.0)/2.0)**2/this%psf_sigma(1)**2)
+                    psf1(i) = exp(-0.5*(i - 1.0 - real(n1/2))**2/this%psf_sigma(1)**2)
                 end do
                 !$omp end parallel do
             end if
             if (this%psf_sigma(2) == 0) then
                 !$omp parallel do private(j)
                 do j = 1, n2
-                    psf2(j) = exp(-0.5*(j - 1.0 - (n2 - 1.0)/2.0)**2)
+                    psf2(j) = exp(-0.5*(j - 1.0 - real(n2/2))**2)
                 end do
                 !$omp end parallel do
                 where (psf2 < maxval(psf2))
@@ -401,7 +441,7 @@ contains
             else
                 !$omp parallel do private(j)
                 do j = 1, n2
-                    psf2(j) = exp(-0.5*(j - 1.0 - (n2 - 1.0)/2.0)**2/this%psf_sigma(2)**2)
+                    psf2(j) = exp(-0.5*(j - 1.0 - real(n2/2))**2/this%psf_sigma(2)**2)
                 end do
                 !$omp end parallel do
             end if
@@ -413,6 +453,10 @@ contains
             end do
             !$omp end parallel do
             this%psf = psf/norm2(psf)
+            ! Isotropic PSF for dip-independent imaging
+            if (this%yn_dip_independent) then
+                this%psf = isotropic_psf_2d(wavelet*psf1, n2)
+            end if
         else
             call assert(size(this%psf, 1) == this%n1 .and. size(this%psf, 2) == this%n2, &
                 ' Error: Shape of custom psf must be n1 x n2')
@@ -428,6 +472,7 @@ contains
         integer :: n1, n2, i, j, l
         real, allocatable, dimension(:) :: rfc
         real, allocatable, dimension(:, :) :: ww
+        real :: fps, fss
 
         n1 = this%n1
         n2 = this%n2
@@ -454,6 +499,15 @@ contains
             end do
         end do
         !$omp end parallel do
+
+        ! Dip-independent imaging: reflectivity normalized by the cosine of the layer dip
+        if (this%yn_dip_independent) then
+            ww = max(this%layer_dip_cosine(), 0.3)
+            this%image_pp = this%image_pp/ww
+            this%image_ps = this%image_ps/ww
+            this%image_sp = this%image_sp/ww
+            this%image_ss = this%image_ss/ww
+        end if
 
         ! Add random noise
         if (this%noise_level /= 0 .and. this%yn_conv_noise) then
@@ -490,7 +544,16 @@ contains
         end if
 
         ! Source wavelet
-        if (this%wave /= '') then
+        if (this%wave /= '' .and. this%f0_bottom > 0) then
+
+            fps = mean(0.5*(ones(n1, n2) + vp(1:this%n1, :)/vs(1:this%n1, :)))
+            fss = mean(vp(1:this%n1, :)/vs(1:this%n1, :))
+            this%image_pp = this%conv_depth_varying(this%image_pp, this%f0, this%f0_bottom)
+            this%image_ps = this%conv_depth_varying(this%image_ps, this%f0*fps, this%f0_bottom*fps)
+            this%image_sp = this%conv_depth_varying(this%image_sp, this%f0*fps, this%f0_bottom*fps)
+            this%image_ss = this%conv_depth_varying(this%image_ss, this%f0*fss, this%f0_bottom*fss)
+
+        else if (this%wave /= '') then
 
             call this%create_psf(n1, n2, this%f0)
             this%image_pp = conv(this%image_pp, this%psf, 'same')
@@ -500,6 +563,15 @@ contains
             call this%create_psf(n1, n2, this%f0*mean(vp(1:this%n1, :)/vs(1:this%n1, :)))
             this%image_ss = conv(this%image_ss, this%psf, 'same')
 
+        end if
+
+        ! Illumination; the same gain for all wave modes
+        if (this%illum_level > 0) then
+            ww = illumination_2d(n1, n2, this%illum_level, this%illum_smooth, safe_seed(int(this%seed, 8)*113))
+            this%image_pp = this%image_pp*ww
+            this%image_ps = this%image_ps*ww
+            this%image_sp = this%image_sp*ww
+            this%image_ss = this%image_ss*ww
         end if
 
         ! Add random noise
@@ -536,6 +608,28 @@ contains
             end select
         end if
 
+        ! Migration noise; band-limited by the PSF of each wave mode
+        if (this%noise_level /= 0 .and. this%noise_type == 'migration') then
+            fps = mean(0.5*(ones(n1, n2) + vp(1:this%n1, :)/vs(1:this%n1, :)))
+            fss = mean(vp(1:this%n1, :)/vs(1:this%n1, :))
+            this%image_pp = this%image_pp + this%noise_level*std(this%image_pp) &
+                *this%migration_noise(safe_seed(int(this%seed, 8)*127), this%f0)
+            this%image_ps = this%image_ps + this%noise_level*std(this%image_ps) &
+                *this%migration_noise(safe_seed(int(this%seed, 8)*127 + 1), this%f0*fps)
+            this%image_sp = this%image_sp + this%noise_level*std(this%image_sp) &
+                *this%migration_noise(safe_seed(int(this%seed, 8)*127 + 2), this%f0*fps)
+            this%image_ss = this%image_ss + this%noise_level*std(this%image_ss) &
+                *this%migration_noise(safe_seed(int(this%seed, 8)*127 + 3), this%f0*fss)
+        end if
+
+        ! Trace jitter; the same statics for all wave modes
+        if (maxval(this%jitter_shift) > 0 .or. this%jitter_gain > 0) then
+            call trace_jitter_2d(this%image_pp, this%jitter_shift, this%jitter_gain, safe_seed(int(this%seed, 8)*137))
+            call trace_jitter_2d(this%image_ps, this%jitter_shift, this%jitter_gain, safe_seed(int(this%seed, 8)*137))
+            call trace_jitter_2d(this%image_sp, this%jitter_shift, this%jitter_gain, safe_seed(int(this%seed, 8)*137))
+            call trace_jitter_2d(this%image_ss, this%jitter_shift, this%jitter_gain, safe_seed(int(this%seed, 8)*137))
+        end if
+
     end subroutine generate_image_elastic
 
     subroutine generate_image(this, vp, rho)
@@ -560,6 +654,11 @@ contains
         end do
         !$omp end parallel do
 
+        ! Dip-independent imaging: reflectivity normalized by the cosine of the layer dip
+        if (this%yn_dip_independent) then
+            this%image = this%image/max(this%layer_dip_cosine(), 0.3)
+        end if
+
         ! Add random noise
         if (this%noise_level /= 0 .and. this%yn_conv_noise) then
             select case (this%noise_type)
@@ -577,9 +676,16 @@ contains
         end if
 
         ! Source wavelet
-        if (this%wave /= '') then
+        if (this%wave /= '' .and. this%f0_bottom > 0) then
+            this%image = this%conv_depth_varying(this%image, this%f0, this%f0_bottom)
+        else if (this%wave /= '') then
             call this%create_psf(n1, n2, this%f0)
             this%image = conv(this%image, this%psf, 'same')
+        end if
+
+        ! Illumination
+        if (this%illum_level > 0) then
+            this%image = this%image*illumination_2d(n1, n2, this%illum_level, this%illum_smooth, safe_seed(int(this%seed, 8)*113))
         end if
 
         if (this%noise_level /= 0 .and. (.not. this%yn_conv_noise)) then
@@ -597,20 +703,105 @@ contains
             end select
         end if
 
+        ! Migration noise
+        if (this%noise_level /= 0 .and. this%noise_type == 'migration') then
+            this%image = this%image + this%noise_level*std(this%image) &
+                *this%migration_noise(safe_seed(int(this%seed, 8)*127), this%f0)
+        end if
+
+        ! Trace jitter
+        if (maxval(this%jitter_shift) > 0 .or. this%jitter_gain > 0) then
+            call trace_jitter_2d(this%image, this%jitter_shift, this%jitter_gain, safe_seed(int(this%seed, 8)*137))
+        end if
+
     end subroutine generate_image
+
+    !
+    !> Cosine of the layer dip from the RGT, excluding faults, salt and karst
+    !
+    function layer_dip_cosine(this) result(c)
+
+        class(rgm2_curved), intent(in) :: this
+        real, allocatable, dimension(:, :) :: c
+
+        c = layer_dip_cosine_2d(this%n1, this%n2, this%rgt, this%yn_fault, this%fault, &
+            this%yn_salt, this%salt, this%yn_karst, this%karst)
+
+    end function layer_dip_cosine
+
+    !
+    !> Convolve with a wavelet whose center frequency changes linearly with depth
+    !> from ftop to fbot; on return, psf is the PSF of ftop
+    !
+    function conv_depth_varying(this, w, ftop, fbot) result(wc)
+
+        class(rgm2_curved), intent(inout) :: this
+        real, dimension(:, :), intent(in) :: w
+        real, intent(in) :: ftop, fbot
+        real, allocatable, dimension(:, :) :: wc
+
+        real, allocatable, dimension(:, :) :: wb, pb
+
+        call this%create_psf(this%n1, this%n2, fbot)
+        wb = conv(w, this%psf, 'same')
+        pb = this%psf
+        call this%create_psf(this%n1, this%n2, ftop)
+        wc = depth_blend_2d(conv(w, this%psf, 'same'), wb, this%psf, pb)
+
+    end function conv_depth_varying
+
+    !
+    !> Migration-image noise band-limited by the PSF of center frequency freq
+    !
+    function migration_noise(this, seed, freq) result(w)
+
+        class(rgm2_curved), intent(inout) :: this
+        integer, intent(in) :: seed
+        real, intent(in) :: freq
+        real, allocatable, dimension(:, :) :: w
+
+        call this%create_psf(this%n1, this%n2, freq)
+        w = migration_noise_2d(this%psf, this%rgt, this%yn_salt, this%salt, this%yn_karst, this%karst, &
+            this%noise_mix, this%noise_worm_length, this%noise_swing_dip, this%noise_swing_nfam, &
+            this%noise_swing_direction /= 'single', seed)
+
+    end function migration_noise
 
     subroutine generate_2d(this)
 
         class(rgm2_curved), intent(inout) :: this
 
+        logical :: yn_aux, yn_rgt_user, yn_fault_user
+
         if (this%nf == 0) then
             this%yn_fault = .false.
+        end if
+
+        ! Dip-independent imaging and migration noise need the RGT and the fault labels;
+        ! compute them internally and release them afterwards if not requested
+        yn_aux = this%yn_dip_independent .or. (this%noise_level /= 0 .and. this%noise_type == 'migration')
+        yn_rgt_user = this%yn_rgt
+        yn_fault_user = this%yn_fault
+        if (yn_aux) then
+            this%yn_rgt = .true.
+            if (this%nf > 0) then
+                this%yn_fault = .true.
+            end if
         end if
 
         if (this%unconf == 0) then
             call generate_2d_geological_model(this)
         else
             call generate_2d_unconformal_geological_model(this)
+        end if
+
+        if (yn_aux) then
+            this%yn_rgt = yn_rgt_user
+            this%yn_fault = yn_fault_user
+            call release_unless(yn_rgt_user, this%rgt)
+            call release_unless(yn_fault_user, this%fault)
+            call release_unless(yn_fault_user, this%fault_dip)
+            call release_unless(yn_fault_user, this%fault_disp)
         end if
 
     end subroutine generate_2d
@@ -631,6 +822,7 @@ contains
         real, allocatable, dimension(:) :: plw, delta_dip
         real, allocatable, dimension(:, :) :: fdip, fdisp, ffdip, ffdisp
         integer :: l, nsf
+        real :: fold_vsign
         real :: b, b_prev, dxys, dist, dist_prev, theta, x0
         real, allocatable, dimension(:) :: disp_az, disp_zc, decay_w, bs
         real :: alpha, dloc
@@ -733,6 +925,12 @@ contains
             end if
         end do
 
+        ! Sense of fold vergence, common to the bottom and top reflectors
+        fold_vsign = 1.0
+        if (this%refl_shape == 'fold' .or. this%refl_shape_top == 'fold') then
+            fold_vsign = sign(1.0, rand(range=[-1.0, 1.0], seed=safe_seed(int(this%seed, 8)*103 + 5)))
+        end if
+
         ! Reflector's shape at the bottom (r) and at the top (rt)
         select case (this%refl_shape)
 
@@ -770,6 +968,16 @@ contains
                             r = r + rescale(cauchy(linspace(0.0, n2 - 1.0, n2), mu(i) + ne2, sigma(i)), [0.0, height(i)])
                     end select
                 end do
+                ! Skewed bumps and/or a smooth background
+                if (maxval(this%refl_skew) > 0 .or. this%refl_background > 0) then
+                    r = bump_reflector_1d(n2, mu + ne2, sigma, height, this%refl_shape, this%refl_skew, this%refl_skew_common, &
+                        this%refl_background, this%n2, safe_seed(int(this%seed, 8)*107), safe_seed(int(this%seed, 8)*109))
+                end if
+
+            case ('fold')
+                r = fold_reflector_1d(n2, this%n2, this%refl_fold_lambda, this%refl_fold_crest, this%refl_fold_vergence, &
+                    fold_vsign, this%refl_fold_lambda_drift, this%refl_fold_amp_drift, this%refl_fold_mode, &
+                    safe_seed(int(this%seed, 8)*103))
 
             case ('perlin')
                 pn%n1 = n2
@@ -824,6 +1032,17 @@ contains
                                 rt = rt + rescale(cauchy(linspace(0.0, n2 - 1.0, n2), mu(i) + ne2, sigma(i)), [0.0, height(i)])
                         end select
                     end do
+                    ! Skewed bumps and/or a smooth background
+                    if (maxval(this%refl_skew) > 0 .or. this%refl_background > 0) then
+                        rt = bump_reflector_1d(n2, mu + ne2, sigma, height, this%refl_shape_top, this%refl_skew, &
+                            this%refl_skew_common, this%refl_background, this%n2, &
+                            safe_seed(int(this%seed, 8)*107 + 1), safe_seed(int(this%seed, 8)*109 + 1))
+                    end if
+
+                case ('fold')
+                    rt = fold_reflector_1d(n2, this%n2, this%refl_fold_lambda, this%refl_fold_crest, this%refl_fold_vergence, &
+                        fold_vsign, this%refl_fold_lambda_drift, this%refl_fold_amp_drift, this%refl_fold_mode, &
+                        safe_seed(int(this%seed, 8)*103 + 1))
 
                 case ('perlin')
                     pn%n1 = n2
@@ -1237,7 +1456,7 @@ contains
             tp = mean(salt_radius)
 
             select case (this%refl_shape)
-                case ('random', 'perlin', 'custom')
+                case ('random', 'perlin', 'custom', 'fold')
                     gmax = random(this%nsalt, range=[tp, n2 - tp], seed=safe_seed(int(this%seed, 8)*5), spacing=0.5*tp)
                 case ('gaussian', 'cauchy')
                     if (this%nsalt > this%ng) then
@@ -1364,15 +1583,6 @@ contains
 
         end if
 
-        ! Generate images
-        if (this%unconf == 0) then
-            if (this%yn_elastic) then
-                call this%generate_image_elastic(vp, vs, rho)
-            else
-                call this%generate_image(vp, rho)
-            end if
-        end if
-
         ! Output
         ! Fault and fault attributes
         if (this%yn_fault) then
@@ -1491,6 +1701,16 @@ contains
             end if
             if (this%yn_karst) then
                 this%karst = 0
+            end if
+        end if
+
+        ! Generate images after the outputs, which dip-independent imaging and
+        ! migration noise use
+        if (this%unconf == 0) then
+            if (this%yn_elastic) then
+                call this%generate_image_elastic(vp, vs, rho)
+            else
+                call this%generate_image(vp, rho)
             end if
         end if
 
@@ -1895,15 +2115,12 @@ contains
 
         end if
 
-        ! Finally, generate image
+        ! Finally, generate image; this also sets psf, since in 2D the
+        ! sub-models do not generate images (and hence no psf)
         if (this%yn_elastic) then
             call this%generate_image_elastic(vp, vs, rho)
         else
             call this%generate_image(vp, rho)
-        end if
-
-        if (.not. this%custom_psf .and. this%wave /= '') then
-            this%psf = g(1)%psf
         end if
 
     end subroutine generate_2d_unconformal_geological_model

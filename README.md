@@ -12,6 +12,8 @@ Recent changes:
 - `rgm2_curved` (2D) and `rgm3_curved` (3D) are RGM's standard API, and both generate acoustic and elastic models. They generalize the fault geometry: strike-varying faults (`delta_strike`), spatially varying (diminishing) fault displacement with fault tips inside the model (`yn_vary_disp`), and displacement decay away from faults (`yn_disp_decay`, drag/rollover).
 - Geomorphological unconformity surfaces: `unconf_shape` can be `meander_channel`, `meander_canyon`, `drainage_channel`, or `drainage_canyon`, generating erosional surfaces from meandering-river and dendritic-drainage simulations, with control over channel width, sinuosity, centerline length, drainage density, and interfluve topography.
 - Karst cave systems (`yn_karst`): tube-network caves inserted into the medium parameter models like salt bodies, with a voxel-wise karst mask, a depth window (`karst_z`), and a connection probability (`karst_connect`) that spans scattered isolated caves to a single extensive multi-level network.
+- Reflector shapes: `refl_shape = 'fold'` generates irregular fold trains with a crest asymmetry (sharp anticlines and broad synclines, or the reverse) and a limb asymmetry (vergence); in 3D, the anticlines plunge out along strike and the fold axes bend. `refl_skew` makes the `gaussian` and `cauchy` bumps asymmetric, with a steep limb and a gentle limb.
+- Seismic images: `yn_dip_independent` keeps steeply dipping reflectors in the image, which the default PSF attenuates so that steep fold limbs can resemble faults. `noise_type = 'migration'`, `f0_bottom`, `illum_level`, `jitter_shift`, and `jitter_gain` give images the character of migrated field data. All these options are off by default. Images are now aligned with the models and labels for any model size: previously, the image of a model with an even number of grid points along an axis was shifted by half a grid point along that axis, so such images differ slightly from those of earlier versions, while images of odd-sized models are unchanged.
 - The standalone geomorphological generators (`meandering_channel`, `meandering_canyon`, `drainage_channel`, `drainage_canyon`, `karst_2d`, `karst_3d`) are accessible directly through `librgm`.
 - A Python interface: see [python/README.md](python/README.md) for details. Its classes `rgm.rgm2` and `rgm.rgm3` are in fact the Fortran types `rgm2_curved` and `rgm3_curved`, not the legacy Fortran types `rgm2` and `rgm3`, which the Python interface does not provide. The python interface can be used as, for instance:
 ```python
@@ -32,7 +34,7 @@ vp, image, fault = p.vp, p.image, p.fault    # numpy arrays
 # Requirement
 `RGM` is written in modern Fortran and depends on [`FLIT`](https://github.com/lanl/flit), which in turn requires the Intel oneAPI compilers (`ifx`, or `mpiifx` when `FLIT` is built with `use_mpi = on`) and the Intel MKL. Install `FLIT` first, then set `flitdir = ...` in [src/Makefile](src/Makefile) to point at your `FLIT` installation.
 
-The Python interface additionally requires Python >= 3.8 and `numpy`; the Python example script also uses `h5py` and `matplotlib`.
+The Python interface additionally requires Python >= 3.8 and `numpy`; the Python example scripts also use [`pymplot`](https://github.com/lanl/pymplot) for plotting.
 
 # Installation
 
@@ -92,13 +94,12 @@ The compiled executables will be at [example/bin](example/bin):
 
 Running these executables will generate the medium parameter models, seismic images, and the associated labels (fault attributes, RGT, facies, salt and karst masks) in the working directory. All the generated files will be in little-endian single-precision raw binary format, with dimensions specificed in the respective codes.
 
-For the Python interface, [example/example_python.py](example/example_python.py) generates one model for each feature type of `RGM` v2.0, exports the models to `HDF5` files, and plots them:
+For the Python interface, [example/example_python.py](example/example_python.py) generates one model for each feature type of `RGM` v2.0. [example/example_shape_noise.py](example/example_shape_noise.py) generates models with the fold-train and skewed reflector shapes, dip-independent images, and migration-like image noise. Both scripts plot the models and images with `pymplot` and save the figures in the working directory:
 
 ```
 cd example
-python3 example_python.py --list     # list the available examples
-python3 example_python.py            # generate, export, and plot all of them
-python3 example_python.py karst_3d   # or just one of them
+python3 example_python.py
+python3 example_shape_noise.py
 ```
 
 # License

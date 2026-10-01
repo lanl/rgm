@@ -88,11 +88,11 @@ to generate random geological models with a size of `(n1, n2, n3) = (128, 256, 2
 - **Default**: `0.1`
 
 > **`refl_shape` (character(len=24))** 
-- **Description**: Shape of the bottom reflectors. Valid options are `random`, `gaussian`, `cauchy`, `perlin`, and `custom`. 
+- **Description**: Shape of the bottom reflectors. Valid options are `random`, `gaussian`, `cauchy`, `perlin`, `fold`, and `custom`. 
 - **Default**: `random`
 
 > **`refl_shape_top` (character(len=24))**
-- **Description**: Shape of the top reflectors. Valid options are `random`, `gaussian`, `cauchy`, `perlin`, and `custom`. In between the top and the bottom reflectors, the shapes of the reflectors will be interpolated depending on depth. 
+- **Description**: Shape of the top reflectors. Valid options are `random`, `gaussian`, `cauchy`, `perlin`, `fold`, `custom`, and `same`. With `same`, the top reflectors have the same shape as the bottom reflectors, scaled to the height range `refl_height_top`. In between the top and the bottom reflectors, the shapes of the reflectors will be interpolated depending on depth. 
 - **Default**: `random`
 
 To use `custom` reflector shapes, the user must provide the following arrays:
@@ -104,6 +104,62 @@ To use `custom` reflector shapes, the user must provide the following arrays:
 > **`refl_top` (real, allocatable, dimension(:, :))** 
 - **Description**: A 2D array (or 1D array in the 2D case) storing the shape of the top reflector shape. Its size must be `(n2, n3)` for 3D and `n2` in 2D. 
 - **Default**: `None`
+
+For `refl_shape = 'fold'` (or `refl_shape_top = 'fold'`), the reflector is a fold train $r(x) = A(x)\left[-\cos\psi + c\cos 2\psi\right]$, where $\psi$ is the fold phase measured from a trough, $c$ is the crest asymmetry, and $A$ is the local amplitude. The wavelength and the amplitude drift from fold to fold, so the train is not periodic. In 3D, the fold train runs across fold axes with a random strike; along strike, the anticlines rise and plunge out, and the fold axes bend.
+
+> **`refl_fold_lambda` (real, dimension(1:2))**
+- **Description**: Range of the mean fold wavelength in grid points. When `[0, 0]`, it is set to `[0.2, 0.5]*n2` in 2D and `[0.2, 0.5]*min(n2, n3)` in 3D.
+- **Default**: `[0.0, 0.0]`
+
+> **`refl_fold_crest` (real, dimension(1:2))**
+- **Description**: Range of the crest asymmetry, clipped to `[-0.25, 0.25]`. Positive values give sharp anticlines and broad synclines; negative values give broad (box) anticlines and sharp synclines.
+- **Default**: `[-0.25, 0.25]`
+
+> **`refl_fold_vergence` (real, dimension(1:2))**
+- **Description**: Range of the magnitude of the limb asymmetry (vergence), clipped to `[0, 0.9]`. The sense of vergence is random per model and common to the bottom and top reflectors.
+- **Default**: `[0.0, 0.5]`
+
+> **`refl_fold_lambda_drift` (real)**
+- **Description**: Fold-to-fold drift of the wavelength; the local wavelength varies by a factor between `exp(-d)` and `exp(d)`.
+- **Default**: `0.4`
+
+> **`refl_fold_amp_drift` (real)**
+- **Description**: Fold-to-fold drift of the amplitude; the local amplitude varies by a factor between `1 - d` and `1 + d`.
+- **Default**: `0.5`
+
+> **`refl_fold_mode` (character(len=12))**
+- **Description**: Form of the vergence. With `smooth`, the fold phase is warped smoothly, and a vergence above about 0.7 develops a shoulder on the gentle limb. With `limb`, each limb is uniformly steep or gentle, and a vergence above about 0.5 makes the steep limb approach a step.
+- **Default**: `smooth`
+
+> **`refl_fold_strike` (real, dimension(1:2)); only for `rgm3_curved`**
+- **Description**: Range of the strike of the fold axes in degrees, measured from x2 toward x3; common to the bottom and top reflectors.
+- **Default**: `[0.0, 180.0]`
+
+> **`refl_fold_plunge` (real); only for `rgm3_curved`**
+- **Description**: Relative variation of the fold uplift along strike. Values near or above 1 make anticlines rise and plunge out along strike (periclines); `0` gives cylindrical folds.
+- **Default**: `0.6`
+
+> **`refl_fold_plunge_length` (real); only for `rgm3_curved`**
+- **Description**: Along-strike correlation length of the uplift variation, in fold wavelengths.
+- **Default**: `2.5`
+
+> **`refl_fold_wobble` (real); only for `rgm3_curved`**
+- **Description**: Lateral shift of the fold axes along strike, in fold wavelengths, which bends the fold axes.
+- **Default**: `0.15`
+
+For `refl_shape = 'gaussian'` or `'cauchy'`, the bumps can be asymmetric:
+
+> **`refl_skew` (real, dimension(1:2))**
+- **Description**: Range of the skew magnitude `s`, drawn per bump. A bump has the scale `sigma*(1 - s)` on one side and `sigma*(1 + s)` on the other, which gives a steep limb and a gentle limb, as in forced folds and fault-propagation folds. In 3D, the skew acts along the (rotated) x2 axis of the bump. When `[0, 0]`, the bumps are symmetric.
+- **Default**: `[0.0, 0.0]`
+
+> **`refl_skew_common` (logical)**
+- **Description**: Whether all bumps of a model are steep on the same side (common vergence, as in a thrust belt).
+- **Default**: `.false.`
+
+> **`refl_background` (real)**
+- **Description**: Amplitude of a smooth random background added to the bumps, relative to the maximum bump height, so the reflectors between the bumps are not flat.
+- **Default**: `0.0`
 
 ### Fault
 
@@ -380,6 +436,69 @@ real :: vmax = 4000.0
 real :: delta_v = 500.0
 
 -->
+
+### Image
+
+By default, the image is the vertical reflectivity convolved with a separable point spread function (PSF): a vertical wavelet multiplied by lateral Gaussians (`psf_sigma`). With this PSF, steeply dipping reflectors fade; with the default parameters, a reflector keeps about 38% of its amplitude at a dip of 30 degrees and 6% at 60 degrees, so steep fold limbs can look like faults. The following options make the image dip-independent and give it the character of migrated images. All of them are off by default, and the default images are unchanged. With or without them, the PSF is centered on the sample that the convolution aligns with the input, so the image is aligned with the model and the labels for both even and odd model sizes.
+
+> **`yn_dip_independent` (logical)**
+- **Description**: Dip-independent imaging. The reflectivity is normalized by the cosine of the layer dip, estimated from the RGT with faults, salt and karst excluded, and convolved with an isotropic PSF whose projection onto any direction is the zero-phase source wavelet. Every reflector then keeps its wavelet and amplitude whatever its dip, and each fault shows as reflector offsets plus a weak fault-plane reflection from the juxtaposed layers. The RGT and the fault labels are computed internally even when `yn_rgt` or `yn_fault` is `.false.`, and released afterwards. For the isotropic PSF, `psf_sigma(2:3)` are not used.
+- **Default**: `.false.`
+
+> **`f0_bottom` (real)**
+- **Description**: Center frequency of the source wavelet at the bottom of the model. When `> 0`, the wavelet frequency changes linearly with depth from `f0` at the top to `f0_bottom` at the bottom, mimicking attenuation; the amplitude of a flat reflector stays constant.
+- **Default**: `0.0`
+
+> **`illum_level` (real)**
+- **Description**: Standard deviation of the logarithm of a smooth multiplicative gain applied to the image, so the reflectors fade and strengthen along their length, as with uneven illumination. `0` means no gain.
+- **Default**: `0.0`
+
+> **`illum_smooth` (real)**
+- **Description**: Correlation length of the illumination gain in grid points.
+- **Default**: `30.0`
+
+> **`noise_type` (character(len=12))**
+- **Description**: Type of noise: `normal`, `uniform`, `exp`, `wavenumber`, or `migration`. The `migration` noise has the character of migrated images. It is a weighted sum of three components, each band-limited by the PSF: worm noise (short reflector-parallel segments in patches, which follow the layers through the RGT), swing noise (crosshatched steeply dipping streaks that grow with depth), and background noise. It is added after the PSF convolution regardless of `yn_conv_noise`, and `noise_level` is then the ratio of the noise RMS to the image RMS.
+- **Default**: `normal`
+
+> **`noise_mix` (real, dimension(1:3))**
+- **Description**: Relative weights of the worm, swing and background components of the `migration` noise.
+- **Default**: `[0.35, 0.30, 0.15]`
+
+> **`noise_worm_length` (real)**
+- **Description**: Along-layer correlation length of the worm noise in grid points.
+- **Default**: `10.0`
+
+> **`noise_swing_dip` (real, dimension(1:2))**
+- **Description**: Range of the dips of the swing noise in degrees.
+- **Default**: `[25.0, 75.0]`
+
+> **`noise_swing_nfam` (integer)**
+- **Description**: Number of dip families of the swing noise, each with a random dip from `noise_swing_dip`. With `noise_swing_direction = 'dual'`, each family contains both senses of dip, mirrored about the vertical (in 3D, a random azimuth and its opposite), with random relative strengths, and `1` gives a single crossing pattern.
+- **Default**: `2`
+
+> **`noise_swing_direction` (character(len=12))**
+- **Description**: Direction of the swing noise. With `dual`, each dip family contains both senses of dip, so the streaks cross in both directions. With `single`, all dip families dip in the same, randomly chosen sense (in 3D, they share one random azimuth), so the streaks dip in one direction.
+- **Default**: `dual`
+
+> **`jitter_shift` (real, dimension(1:2))**
+- **Description**: Trace-to-trace jitter: the maximum smooth static shift and the standard deviation of the random static shift of the traces, in grid points. It roughens the reflectors slightly, as residual statics do.
+- **Default**: `[0.0, 0.0]`
+
+> **`jitter_gain` (real)**
+- **Description**: Standard deviation of a random gain applied to each trace, which gives faint vertical striping.
+- **Default**: `0.0`
+
+For example, the following settings give images that resemble migrated field data:
+```fortran
+    m%yn_dip_independent = .true.
+    m%noise_type = 'migration'
+    m%noise_level = 0.5
+    m%f0_bottom = 100.0
+    m%illum_level = 0.35
+    m%jitter_shift = [0.8, 0.25]
+    m%jitter_gain = 0.05
+```
 
 ## Examples
 

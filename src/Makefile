@@ -25,6 +25,7 @@ moddir = $(PWD)/../lib
 # Dependencies
 common = \
     module_geological_model_utility.o \
+    module_geological_model_realism.o \
     module_geological_model_2d.o \
     module_geological_model_3d.o \
     module_geological_model_meander.o \
