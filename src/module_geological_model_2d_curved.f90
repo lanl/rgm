@@ -835,7 +835,7 @@ contains
                         ' <generate_2d_geological_model> Error: refl_top must be initialized. ')
                     call assert(size(this%refl_top) == this%n2, &
                         '<generate_2d_geological_model> Error: size(refl_top) must = n2')
-                    rt = pad(this%refl_top, [ne2 + 1, ne2 + 1], ['edge', 'edge'])
+                    rt = pad(this%refl_top, [ne2, ne2], ['edge', 'edge'])
 
             end select
 

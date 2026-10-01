@@ -853,7 +853,7 @@ contains
                     ' <generate_2d_geological_model> Error: refl must be initialized. ')
                 call assert(size(this%refl, 1) == this%n2 .and. size(this%refl, 2) == this%n3, &
                     '<generate_2d_geological_model> Error: size(refl) must = (n2, n3)')
-                r = pad(this%refl, [ne2 + 1, ne2 + 1, n3 + 1, n3 + 1], ['edge', 'edge', 'edge', 'edge'])
+                r = pad(this%refl, [ne2, ne2, ne3, ne3], ['edge', 'edge', 'edge', 'edge'])
 
         end select
 
@@ -924,7 +924,7 @@ contains
                         ' <generate_2d_geological_model> Error: refl_top must be initialized. ')
                     call assert(size(this%refl_top, 1) == this%n2 .and. size(this%refl_top, 2) == this%n3, &
                         '<generate_2d_geological_model> Error: size(refl_top) must = (n2, n3)')
-                    rt = pad(this%refl_top, [ne2 + 1, ne2 + 1, n3 + 1, n3 + 1], ['edge', 'edge', 'edge', 'edge'])
+                    rt = pad(this%refl_top, [ne2, ne2, ne3, ne3], ['edge', 'edge', 'edge', 'edge'])
 
             end select
 
