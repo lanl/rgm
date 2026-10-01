@@ -150,7 +150,7 @@ For `refl_shape = 'fold'` (or `refl_shape_top = 'fold'`), the reflector is a fol
 For `refl_shape = 'gaussian'` or `'cauchy'`, the bumps can be asymmetric:
 
 > **`refl_skew` (real, dimension(1:2))**
-- **Description**: Range of the skew magnitude `s`, drawn per bump. A bump has the scale `sigma*(1 - s)` on one side and `sigma*(1 + s)` on the other, which gives a steep limb and a gentle limb, as in forced folds and fault-propagation folds. In 3D, the skew acts along the (rotated) x2 axis of the bump. When `[0, 0]`, the bumps are symmetric.
+- **Description**: Range of the skew magnitude `s`, drawn per bump and clipped to `[0, 0.95]`. A bump has the scale `sigma*(1 - s)` on one side and `sigma*(1 + s)` on the other, which gives a steep limb and a gentle limb, as in forced folds and fault-propagation folds. In 3D, the skew acts along the (rotated) x2 axis of the bump. When `[0, 0]`, the bumps are symmetric.
 - **Default**: `[0.0, 0.0]`
 
 > **`refl_skew_common` (logical)**
@@ -446,7 +446,7 @@ By default, the image is the vertical reflectivity convolved with a separable po
 - **Default**: `.false.`
 
 > **`f0_bottom` (real)**
-- **Description**: Center frequency of the source wavelet at the bottom of the model. When `> 0`, the wavelet frequency changes linearly with depth from `f0` at the top to `f0_bottom` at the bottom, mimicking attenuation; the amplitude of a flat reflector stays constant.
+- **Description**: Center frequency of the source wavelet at the bottom of the model. When `> 0`, RGM computes two images, one with a wavelet of center frequency `f0` and one with a wavelet of center frequency `f0_bottom`. It blends them with weights that change linearly with depth, so the top of the image uses only the `f0` wavelet and the bottom uses only the `f0_bottom` wavelet. This mimics the loss of high frequencies with depth, and the amplitude of a flat reflector stays constant.
 - **Default**: `0.0`
 
 > **`illum_level` (real)**
@@ -458,7 +458,7 @@ By default, the image is the vertical reflectivity convolved with a separable po
 - **Default**: `30.0`
 
 > **`noise_type` (character(len=12))**
-- **Description**: Type of noise: `normal`, `uniform`, `exp`, `wavenumber`, or `migration`. The `migration` noise has the character of migrated images. It is a weighted sum of three components, each band-limited by the PSF: worm noise (short reflector-parallel segments in patches, which follow the layers through the RGT), swing noise (crosshatched steeply dipping streaks that grow with depth), and background noise. It is added after the PSF convolution regardless of `yn_conv_noise`, and `noise_level` is then the ratio of the noise RMS to the image RMS.
+- **Description**: Type of noise: `normal`, `uniform`, `exp`, `wavenumber`, or `migration`. The `migration` noise has the character of migrated images. It is a weighted sum of three components, each band-limited by the PSF: worm noise (short reflector-parallel segments in patches, which follow the layers through the RGT), swing noise (steeply dipping streaks that grow with depth and, by default, cross in both directions; see `noise_swing_direction`), and background noise. It is added after the PSF convolution regardless of `yn_conv_noise`, and `noise_level` is then the ratio of the noise RMS to the image RMS.
 - **Default**: `normal`
 
 > **`noise_mix` (real, dimension(1:3))**

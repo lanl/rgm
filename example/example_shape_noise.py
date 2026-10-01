@@ -146,7 +146,7 @@ q = rgm.rgm3(n1=151, n2=251, n3=251, nl=45, nf=3, seed=2468, dip=[60.0, 120.0], 
              delta_strike=[15.0, 25.0], lwv=0.3, refl_shape='fold', refl_shape_top='same',
              refl_height=[0.0, 45.0], refl_height_top=[0.0, 15.0],
              refl_fold_lambda=[70.0, 90.0], refl_fold_crest=[0.15, 0.25], refl_fold_vergence=[0.3, 0.3],
-             refl_fold_strike=[65.0, 75.0], refl_fold_plunge=0.8, refl_fold_wobble=0.2,
+             refl_fold_strike=[155.0, 165.0], refl_fold_plunge=0.8, refl_fold_wobble=0.2,
              yn_dip_independent=True, noise_type='migration', noise_level=0.4,
              f0_bottom=110.0, illum_level=0.3, jitter_shift=[0.6, 0.2], jitter_gain=0.04)
 q.generate()
@@ -154,7 +154,7 @@ q.vp.T.tofile('./example_3d_vp_fold.bin')
 q.image.T.tofile('./example_3d_image_fold.bin')
 showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
           slice1=120, outfile='example_3d_vp_fold.png')
-showslice(q.image, colormap='binary', cperc=99, label1='Z', label2='X', label3='Y',
+showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
           slice1=120, outfile='example_3d_image_fold.png')
 print('3D fold train done')
 
@@ -171,7 +171,7 @@ q.vp.T.tofile('./example_3d_vp_skew.bin')
 q.image.T.tofile('./example_3d_image_skew.bin')
 showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
           slice1=120, outfile='example_3d_vp_skew.png')
-showslice(q.image, colormap='binary', cperc=99, label1='Z', label2='X', label3='Y',
+showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
           slice1=120, outfile='example_3d_image_skew.png')
 print('3D skewed ridges done')
 
@@ -181,7 +181,7 @@ q = rgm.rgm3(n1=128, n2=128, n3=128, nl=40, nf=3, seed=1357, dip=[60.0, 120.0], 
              delta_strike=[15.0, 25.0], lwv=0.3, refl_shape='fold', refl_shape_top='same',
              refl_height=[0.0, 30.0], refl_height_top=[0.0, 10.0],
              refl_fold_lambda=[45.0, 60.0], refl_fold_crest=[-0.25, -0.2], refl_fold_vergence=[0.4, 0.4],
-             refl_fold_strike=[60.0, 80.0],
+             refl_fold_strike=[150.0, 170.0],
              yn_dip_independent=True, noise_type='migration', noise_level=0.4, noise_swing_direction='single',
              f0_bottom=110.0, illum_level=0.3, jitter_shift=[0.6, 0.2], jitter_gain=0.04)
 q.generate()
@@ -189,7 +189,7 @@ q.vp.T.tofile('./example_3d_vp_box.bin')
 q.image.T.tofile('./example_3d_image_box.bin')
 showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
           slice1=90, outfile='example_3d_vp_box.png')
-showslice(q.image, colormap='binary', cperc=99, label1='Z', label2='X', label3='Y',
+showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
           slice1=90, outfile='example_3d_image_box.png')
 print('3D box folds done')
 
@@ -207,6 +207,6 @@ q.vp.T.tofile('./example_3d_vp_cauchy.bin')
 q.image.T.tofile('./example_3d_image_cauchy.bin')
 showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
           slice1=90, outfile='example_3d_vp_cauchy.png')
-showslice(q.image, colormap='binary', cperc=99, label1='Z', label2='X', label3='Y',
+showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
           slice1=90, outfile='example_3d_image_cauchy.png')
 print('3D skewed Cauchy domes done')

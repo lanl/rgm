@@ -353,12 +353,13 @@ contains
         real :: x, y, a, b, pa, pr, am, env, trough
         integer :: j, k, nu, nv, m, l
 
+        ! Positions across (u) and along (v) the fold axes
         u = zeros(n2, n3)
         v = zeros(n2, n3)
         do k = 1, n3
             do j = 1, n2
-                u(j, k) = (j - 1.0)*cos(strike) + (k - 1.0)*sin(strike)
-                v(j, k) = -(j - 1.0)*sin(strike) + (k - 1.0)*cos(strike)
+                u(j, k) = (j - 1.0)*sin(strike) - (k - 1.0)*cos(strike)
+                v(j, k) = (j - 1.0)*cos(strike) + (k - 1.0)*sin(strike)
             end do
         end do
         v = v - minval(v)

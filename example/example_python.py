@@ -36,7 +36,7 @@ q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=0, seed=102, lwv=0.4, lwh=0.2,
 q.generate()
 showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
           outfile='fold_3d_vp.png')
-showslice(q.image, colormap='binary', cperc=99, label1='Z', label2='X', label3='Y',
+showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
           outfile='fold_3d_image.png')
 showslice(q.rgt, colormap='jet', legend=True, unit='RGT', label1='Z', label2='X', label3='Y',
           outfile='fold_3d_rgt.png')
@@ -67,10 +67,10 @@ q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=5, seed=202, lwv=0.4, lwh=0.2,
 q.generate()
 showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
           outfile='fault_3d_vp.png')
-showslice(q.image, colormap='binary', cperc=99, label1='Z', label2='X', label3='Y',
+showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
           outfile='fault_3d_image.png')
-showslice(q.fault, background=q.image, backcolormap='binary', backcperc=99, colormap='jet', alphas='0:0,0.5:1',
-          label1='Z', label2='X', label3='Y', outfile='fault_3d_fault.png')
+showslice(q.fault, background=q.image, backcolormap='binary', backclip=2*q.image.std(),
+          colormap='jet', alphas='0:0,0.5:1', label1='Z', label2='X', label3='Y', outfile='fault_3d_fault.png')
 
 # Faults with strike varying along the fault (curved in map view)
 q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=4, seed=203, lwv=0.4, lwh=0.2,
@@ -82,10 +82,10 @@ q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=4, seed=203, lwv=0.4, lwh=0.2,
 q.generate()
 showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
           outfile='fault_strike_3d_vp.png')
-showslice(q.image, colormap='binary', cperc=99, label1='Z', label2='X', label3='Y',
+showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
           outfile='fault_strike_3d_image.png')
-showslice(q.fault, background=q.image, backcolormap='binary', backcperc=99, colormap='jet', alphas='0:0,0.5:1',
-          label1='Z', label2='X', label3='Y', outfile='fault_strike_3d_fault.png')
+showslice(q.fault, background=q.image, backcolormap='binary', backclip=2*q.image.std(),
+          colormap='jet', alphas='0:0,0.5:1', label1='Z', label2='X', label3='Y', outfile='fault_strike_3d_fault.png')
 
 # Faults with an elliptical slip patch: the displacement dies out toward the
 # fault tips
@@ -99,10 +99,10 @@ q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=4, seed=204, lwv=0.4, lwh=0.2,
 q.generate()
 showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
           outfile='fault_vary_disp_3d_vp.png')
-showslice(q.image, colormap='binary', cperc=99, label1='Z', label2='X', label3='Y',
+showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
           outfile='fault_vary_disp_3d_image.png')
-showslice(q.fault_disp, background=q.image, backcolormap='binary', backcperc=99, colormap='jet', alphas='0:0,0.5:1',
-          legend=True, unit='Displacement', label1='Z', label2='X', label3='Y',
+showslice(q.fault_disp, background=q.image, backcolormap='binary', backclip=2*q.image.std(),
+          colormap='jet', alphas='0:0,0.5:1', legend=True, unit='Displacement', label1='Z', label2='X', label3='Y',
           outfile='fault_vary_disp_3d_disp.png')
 
 # Displacement decaying away from the faults, which creates drag folds and
@@ -117,10 +117,10 @@ q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=3, seed=205, lwv=0.4, lwh=0.2,
 q.generate()
 showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
           outfile='fault_decay_3d_vp.png')
-showslice(q.image, colormap='binary', cperc=99, label1='Z', label2='X', label3='Y',
+showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
           outfile='fault_decay_3d_image.png')
-showslice(q.fault_disp, background=q.image, backcolormap='binary', backcperc=99, colormap='jet', alphas='0:0,0.5:1',
-          legend=True, unit='Displacement', label1='Z', label2='X', label3='Y',
+showslice(q.fault_disp, background=q.image, backcolormap='binary', backclip=2*q.image.std(),
+          colormap='jet', alphas='0:0,0.5:1', legend=True, unit='Displacement', label1='Z', label2='X', label3='Y',
           outfile='fault_decay_3d_disp.png')
 
 # ==================================================================
@@ -151,7 +151,7 @@ q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=2, seed=302, lwv=0.4, lwh=0.2,
 q.generate()
 showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
           slice1=38, outfile='meander_channel_3d_vp.png')
-showslice(q.image, colormap='binary', cperc=99, label1='Z', label2='X', label3='Y',
+showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
           slice1=38, outfile='meander_channel_3d_image.png')
 
 # Unconformity carved by a meandering incised canyon
@@ -164,7 +164,7 @@ q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=2, seed=303, lwv=0.4, lwh=0.2,
 q.generate()
 showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
           slice1=38, outfile='meander_canyon_3d_vp.png')
-showslice(q.image, colormap='binary', cperc=99, label1='Z', label2='X', label3='Y',
+showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
           slice1=38, outfile='meander_canyon_3d_image.png')
 
 # Unconformity carved by a dendritic drainage network
@@ -177,7 +177,7 @@ q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=2, seed=304, lwv=0.4, lwh=0.2,
 q.generate()
 showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
           slice1=30, outfile='drainage_channel_3d_vp.png')
-showslice(q.image, colormap='binary', cperc=99, label1='Z', label2='X', label3='Y',
+showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
           slice1=30, outfile='drainage_channel_3d_image.png')
 
 # Unconformity carved by a dendritic drainage canyon system
@@ -190,7 +190,7 @@ q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=2, seed=305, lwv=0.4, lwh=0.2,
 q.generate()
 showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
           slice1=46, outfile='drainage_canyon_3d_vp.png')
-showslice(q.image, colormap='binary', cperc=99, label1='Z', label2='X', label3='Y',
+showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
           slice1=46, outfile='drainage_canyon_3d_image.png')
 
 # ==================================================================
@@ -205,10 +205,10 @@ q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=2, seed=401, lwv=0.4, lwh=0.2,
 q.generate()
 showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
           outfile='salt_3d_vp.png')
-showslice(q.image, colormap='binary', cperc=99, label1='Z', label2='X', label3='Y',
+showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
           outfile='salt_3d_image.png')
-showslice(q.salt, background=q.image, backcolormap='binary', backcperc=99, colormap='jet', alphas='0:0,0.5:1',
-          label1='Z', label2='X', label3='Y', outfile='salt_3d_salt.png')
+showslice(q.salt, background=q.image, backcolormap='binary', backclip=2*q.image.std(),
+          colormap='jet', alphas='0:0,0.5:1', label1='Z', label2='X', label3='Y', outfile='salt_3d_salt.png')
 
 # ==================================================================
 # Karst cave system: a connected network of tubes; the karst mask is
@@ -223,10 +223,10 @@ q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=3, seed=501, lwv=0.4, lwh=0.2,
 q.generate()
 showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
           outfile='karst_3d_vp.png')
-showslice(q.image, colormap='binary', cperc=99, label1='Z', label2='X', label3='Y',
+showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
           outfile='karst_3d_image.png')
-showslice(q.karst, background=q.image, backcolormap='binary', backcperc=99, colormap='jet', alphas='0:0,0.5:1',
-          label1='Z', label2='X', label3='Y', outfile='karst_3d_karst.png')
+showslice(q.karst, background=q.image, backcolormap='binary', backclip=2*q.image.std(),
+          colormap='jet', alphas='0:0,0.5:1', label1='Z', label2='X', label3='Y', outfile='karst_3d_karst.png')
 
 # ==================================================================
 # Elastic model: Vp, Vs, density, and the PP, PS, SP and SS images
@@ -244,11 +244,11 @@ showslice(q.vs, colormap='jet', legend=True, unit='Vs (m/s)', label1='Z', label2
           outfile='elastic_3d_vs.png')
 showslice(q.rho, colormap='jet', legend=True, unit='Density (kg/m$^3$)', label1='Z', label2='X', label3='Y',
           outfile='elastic_3d_rho.png')
-showslice(q.image_pp, colormap='binary', cperc=99, label1='Z', label2='X', label3='Y',
+showslice(q.image_pp, colormap='binary', clip=2*q.image_pp.std(), label1='Z', label2='X', label3='Y',
           outfile='elastic_3d_image_pp.png')
-showslice(q.image_ps, colormap='binary', cperc=99, label1='Z', label2='X', label3='Y',
+showslice(q.image_ps, colormap='binary', clip=2*q.image_ps.std(), label1='Z', label2='X', label3='Y',
           outfile='elastic_3d_image_ps.png')
-showslice(q.image_sp, colormap='binary', cperc=99, label1='Z', label2='X', label3='Y',
+showslice(q.image_sp, colormap='binary', clip=2*q.image_sp.std(), label1='Z', label2='X', label3='Y',
           outfile='elastic_3d_image_sp.png')
-showslice(q.image_ss, colormap='binary', cperc=99, label1='Z', label2='X', label3='Y',
+showslice(q.image_ss, colormap='binary', clip=2*q.image_ss.std(), label1='Z', label2='X', label3='Y',
           outfile='elastic_3d_image_ss.png')
