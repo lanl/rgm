@@ -1784,7 +1784,7 @@ contains
                     slice(:, i) = random_circular(360, 0.75*rc(i), 0.25*rc(i), 0.3, 10.0, seed=safe_seed(int(this%seed, 8)*22*isalt - i))
                 end do
                 !$omp end parallel do
-                slice = interp_to(slice, [360, n1], ['', 'pchip'])
+                slice = interp_to(slice, [360, n1], [character(len=5) :: '', 'pchip'])
 
                 ! Fill enclosed region to get salt body
                 !$omp parallel do private(i, j, k, dist, ag, xcenter, ycenter)
