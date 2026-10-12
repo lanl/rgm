@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rgm"
-version = "2.1.0"
+version = "2.2.0"
 description = "Python interface to RGM: random geological model generation for machine learning"
 readme = "README.md"
 requires-python = ">=3.8"

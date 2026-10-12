@@ -160,8 +160,8 @@ module geological_model_2d_curved
         !> Number of Gaussians for refl_shape = gaussian
         integer :: ng = 2
         !> Range of reflector's heights
-        real, dimension(1:2) :: refl_height = 20.0
-        real, dimension(1:2) :: refl_height_top = 10.0
+        real, dimension(1:2) :: refl_height = [0.0, 20.0]
+        real, dimension(1:2) :: refl_height_top = [0.0, 10.0]
         !> Range of Gaussian standard deviation for refl_shape = gaussian
         real, dimension(1:2) :: refl_sigma2 = [0.0, 0.0]
         !> Range of Gaussian mean for refl_shape = gaussian

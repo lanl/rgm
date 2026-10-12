@@ -1203,7 +1203,7 @@ contains
                     sigma2 = random(this%ng, range=gsigma2, seed=safe_seed(int(this%seed, 8)*6 - 1))
                     mu3 = random(this%ng, range=gmu3, seed=safe_seed(int(this%seed, 8)*7 - 1))
                     sigma3 = random(this%ng, range=gsigma3, seed=safe_seed(int(this%seed, 8)*8 - 1))
-                    height = random(this%ng, range=this%refl_height, seed=safe_seed(int(this%seed, 8)*9 - 1))
+                    height = random(this%ng, range=this%refl_height_top, seed=safe_seed(int(this%seed, 8)*9 - 1))
                     gtheta = random(this%ng, range=[0.0, 180.0], seed=safe_seed(int(this%seed, 8)*9 - 2))*ifelse(this%rotate_fold, real(const_deg2rad), 0.0)
 
                     rt = zeros(n2, n3)
