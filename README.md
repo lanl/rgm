@@ -7,21 +7,21 @@
 
 `RGM` is an open-source package for generating realistic random geological models, including medium parameter models $(V_p, V_s, \rho)$, seismic images (PP, PS, SP, SS images, or just PP image), geological faults, relative geological time volume, salt bodies, karst systems, and unconformities, using a multi-randomization method. The generated data can be used to train machine learning models, e.g., geological fault detection model, multitask inference-refinement model [MTI-MTR](https://github.com/lanl/mtl), and seismicity-constrained fault characterization model [SCF](https://github.com/lanl/scf).
 
-The work is supported by Los Alamos National Laboratory (LANL) Laboratory Directory Research and Development (LDRD) project 20240322ER. LANL is operated by Triad National Security, LLC, for the National Nuclear Security Administration (NNSA) of the U.S. Department of Energy (DOE) under Contract No. 89233218CNA000001. The research used high-performance computing resources provided by LANL's Institutional Computing program.
+The work is supported by Los Alamos National Laboratory (LANL) Laboratory Directed Research and Development (LDRD) project 20240322ER. LANL is operated by Triad National Security, LLC, for the National Nuclear Security Administration (NNSA) of the U.S. Department of Energy (DOE) under Contract No. 89233218CNA000001. The research used high-performance computing resources provided by LANL's Institutional Computing program.
 
 The codes were approved for public release under LANL approval reference O4778.
 
 Recent changes: 
-- The legacy generators `rgm2_elastic` and `rgm3_elastic` are removed; if you need them, please download v1.0.0 from the history releases and compile. The Fortran types `rgm2` and `rgm3` are outdated and will not be maintained any more. To keep backward compatibility, RGM v2.0 still includes them, unchanged from RGM v1.0.0, so that programs written for them still compile and reproduce their models. The only exception is `refl_shape = 'perlin'` with a seed above about 1.07e8, where the Perlin noise seeds differ. New work should use `rgm2_curved` and `rgm3_curved`.
+- The legacy generators `rgm2_elastic` and `rgm3_elastic` are removed; if you need them, please download v1.0.0 from the history releases and compile. The Fortran types `rgm2` and `rgm3` are outdated and will not be maintained anymore. To keep backward compatibility, RGM includes them again from v2.1.0, unchanged from RGM v1.0.0, so that programs written for them still compile and reproduce their models. The only exception is `refl_shape = 'perlin'` with a seed above about 1.07e8, where the Perlin noise seeds differ. New work should use `rgm2_curved` and `rgm3_curved`.
 - `rgm2_curved` (2D) and `rgm3_curved` (3D) are RGM's standard API, and both generate acoustic and elastic models. They generalize the fault geometry: strike-varying faults (`delta_strike`), spatially varying (diminishing) fault displacement with fault tips inside the model (`yn_vary_disp`), and displacement decay away from faults (`yn_disp_decay`, drag/rollover).
 - Geomorphological unconformity surfaces: `unconf_shape` can be `meander_channel`, `meander_canyon`, `drainage_channel`, or `drainage_canyon`, generating erosional surfaces from meandering-river and dendritic-drainage simulations, with control over channel width, sinuosity, centerline length, drainage density, and interfluve topography.
-- Karst cave systems (`yn_karst`): tube-network caves inserted into the medium parameter models like salt bodies, with a voxel-wise karst mask, a depth window (`karst_z`), and a connection probability (`karst_connect`) that spans scattered isolated caves to a single extensive multi-level network.
+- Karst cave systems (`yn_karst`): tube-network caves inserted into the medium parameter models like salt bodies, with a voxel-wise karst mask, a depth window (`karst_z`), and a connection probability (`karst_connect`) that ranges from scattered isolated caves to a single extensive multi-level network.
 - Thrust faults (`nthrust`): low-angle reverse faults with ramps and flats that follow bedding, which generate fault-bend folds, fault-propagation folds (trishear ahead of a propagating fault tip), imbricate fans, duplexes (`thrust_roof`), and pop-ups (`thrust_back`). The fold hinges widen away from the fault (`thrust_bend`, `thrust_widen`). In 3D, the ramp traces can curve in map view (`thrust_delta_strike`), and the slip can die out along strike (`thrust_radius`), so that the folds plunge out. Thrusts are older than the other faults, and the RGT decreases across a thrust, where older layers lie above younger layers. With `nthrust = 0` (the default), models are unchanged.
 - Reflector shapes: `refl_shape = 'fold'` generates irregular fold trains with a crest asymmetry (sharp anticlines and broad synclines, or the reverse) and a limb asymmetry (vergence); in 3D, the anticlines plunge out along strike and the fold axes bend. `refl_skew` makes the `gaussian` and `cauchy` bumps asymmetric, with a steep limb and a gentle limb.
 - Seismic images: by default, steep layers and high-angle faults image weakly, as in field data. `yn_dip_independent` instead keeps every reflector at full amplitude whatever its dip, for clean images. `noise_type = 'migration'`, `f0_bottom`, `wave_phase` (a residual phase rotation of the wavelet), `illum_level`, `jitter_shift`, and `jitter_gain` give images the character of migrated field data. All these options are off by default. Images are now aligned with the models and labels for any model size: previously, the image of a model with an even number of grid points along an axis was shifted by half a grid point along that axis, so such images differ slightly from those of earlier versions, while images of odd-sized models are unchanged. The PSF is now scaled so that a flat reflector is imaged with the amplitude of its reflection coefficient, whatever the wavelet, its frequency, `psf_sigma`, and the model dimension. Previously, the PSF was normalized by its L2 norm, so the image amplitude grew with the lateral width of the PSF and with the frequency; with the default parameters, a flat reflector was imaged 2.2 times too strong in 2D and 6.6 times in 3D. Images therefore differ from those of earlier versions by a constant factor. Noise levels are relative to the image, so noisy images change by the same factor.
 - Elastic models: each layer now has its own random Vp/Vs ratio, drawn from `vpvsratio`, and the ratio follows the layer through folds, faults, thrust faults, and unconformities. Previously, Vs was a fixed function of Vp, so the PS, SP, and SS reflectivities were scaled copies of the PP reflectivity. The default `salt_vs` is now 2850 m/s; the old value of 4400 m/s with `salt_vp = 5000` gave Vp/Vs = 1.14, which implies a negative bulk modulus. The PS and SP images now stack P-wave incidence angles from 10° to 40° (`angle_ps`) instead of 0° to 15°, because PS vanishes at normal incidence; the stack leaves out angles beyond the critical angle. Elastic models therefore have a different `vs`, and their images differ from those of earlier versions, while `vp` and `rho` are unchanged. [example/example_elastic.py](example/example_elastic.py) shows elastic models of a thrust pop-up and a duplex.
 - The standalone geomorphological generators (`meandering_channel`, `meandering_canyon`, `drainage_channel`, `drainage_canyon`, `karst_2d`, `karst_3d`) are accessible directly through `librgm`.
-- A Python interface: see [python/README.md](python/README.md) for details. Its classes `rgm.rgm2` and `rgm.rgm3` are in fact the Fortran types `rgm2_curved` and `rgm3_curved`, not the legacy Fortran types `rgm2` and `rgm3`, which the Python interface does not provide. The python interface can be used as, for instance:
+- A Python interface: see [python/README.md](python/README.md) for details. Its classes `rgm.rgm2` and `rgm.rgm3` are in fact the Fortran types `rgm2_curved` and `rgm3_curved`, not the legacy Fortran types `rgm2` and `rgm3`, which the Python interface does not provide. The Python interface can be used as, for instance:
 ```python
 import rgm
 
@@ -51,7 +51,7 @@ cd src
 make
 ```
 
-The compiled static library `librgm.a` and the module files will be at [lib](lib). The [Makefile](example/Makefile) in the [example](example) directory shows how to use `RGM` in your own code, including the include paths and the link of the compiled library/modules.
+The compiled static library `librgm.a` and the module files will be at `lib`. The [Makefile](example/Makefile) in the [example](example) directory shows how to use `RGM` in your own code, including the include paths and the link of the compiled library/modules.
 
 ## `rgm` (Python)
 
@@ -65,6 +65,7 @@ pip install -e python/
 ```
 
 `make so` requires `FLIT` to be compiled with `-fPIC`, and `python3`, which generates the C-interoperable shim.
+
 To check the installation,
 
 ```
@@ -82,14 +83,14 @@ export RGM_LIB=/path/to/librgm.so
 See [python/README.md](python/README.md) for the full description of the interface. `make so` generates the C-interoperable shim from the Fortran types, so new Fortran parameters become available in Python after `make so`.
 
 # Use
-We include several simple examples to use `RGM` in [example](example). To build the Fortran examples,
+We include several simple examples to use `RGM` in [example](example). To build the Fortran examples, set `flitdir` and `rgmdir` in [example/Makefile](example/Makefile) to point at your `FLIT` and `RGM` directories, then run
 
 ```
 cd example
 make
 ```
 
-The compiled executables will be at [example/bin](example/bin):
+The compiled executables will be at `example/bin`:
 
 | Executable | Source | Generates |
 | --- | --- | --- |
@@ -98,9 +99,9 @@ The compiled executables will be at [example/bin](example/bin):
 | `x_generate_channel` | [example_channel.f90](example/example_channel.f90) | models with the four geomorphological unconformity types, in 2D and 3D |
 | `x_generate_karst` | [example_karst.f90](example/example_karst.f90) | models with karst cave systems, including karst combined with unconformities and salt |
 
-Running these executables will generate the medium parameter models, seismic images, and the associated labels (fault attributes, RGT, facies, salt and karst masks) in the working directory. All the generated files will be in little-endian single-precision raw binary format, with dimensions specificed in the respective codes.
+Running these executables will generate the medium parameter models, seismic images, and the associated labels (fault attributes, RGT, facies, salt and karst masks) in the working directory. All the generated files will be in little-endian single-precision raw binary format, with dimensions specified in the respective codes.
 
-For the Python interface, [example/example_python.py](example/example_python.py) generates one model for each feature type of `RGM` v2.0. [example/example_shape_noise.py](example/example_shape_noise.py) generates models with the fold-train and skewed reflector shapes, dip-independent images, and migration-like image noise. [example/example_fault_types.py](example/example_fault_types.py) generates one model for each type of fault and thrust fault and assembles them into the figures `fault_types_2d.png` and `fault_types_3d.png`. [example/example_elastic.py](example/example_elastic.py) generates elastic models of a thrust pop-up and a duplex in 2D and 3D, where the 3D pop-up lies below an unconformity, and assembles their Vp, Vs, Vp/Vs, and PP, PS, and SS images into the figures `elastic_2d.png` and `elastic_3d.png`. The scripts plot the models and images with `pymplot` and save the figures in the working directory:
+For the Python interface, [example/example_python.py](example/example_python.py) generates one model for each feature type of `RGM`. [example/example_shape_noise.py](example/example_shape_noise.py) generates models with the fold-train and skewed reflector shapes, dip-independent images, and migration-like image noise. [example/example_fault_types.py](example/example_fault_types.py) generates one model for each type of fault and thrust fault and assembles them into the figures `fault_types_2d.png` and `fault_types_3d.png`. [example/example_elastic.py](example/example_elastic.py) generates elastic models of a thrust pop-up and a duplex in 2D and 3D, where the 3D pop-up lies below an unconformity, and assembles their Vp, Vs, Vp/Vs, and PP, PS, and SS images into the figures `elastic_2d.png` and `elastic_3d.png`. The scripts plot the models and images with `pymplot` and save the figures in the working directory:
 
 ```
 cd example
@@ -137,7 +138,7 @@ If you use this package in your research and find it useful, please cite it as
 
 The v2.0 features -- the fault generalizations, the meandering-channel, canyon, and drainage unconformities, and the karst systems -- are described in
 
-* Kai Gao, 2026, RGM 2.0: Improved random geological modeling with realistic faults, meandering channels, canyons, and karst for machine learning in seismic interpretation, _under review with Comoputers & Geosciences_, LA-UR-26-27587.
+* Kai Gao, 2026, RGM 2.0: Improved random geological modeling with realistic faults, meandering channels, canyons, and karst for machine learning in seismic interpretation, _under review with Computers & Geosciences_, LA-UR-26-27587.
 
 # Examples
 

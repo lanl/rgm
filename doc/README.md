@@ -1,7 +1,7 @@
 
 # Short Tutorial for RGM
 
-This is short tutorial on how to install and use RGM.
+This is a short tutorial on how to install and use RGM.
 
 ## Table of Contents
 - [Installation](#installation)
@@ -20,14 +20,16 @@ cd src
 make
 ```
 
-You need to install [`FLIT`](https://github.com/lanl/flit) before installing `RGM`, and set the path `flitdir = ...` in the [Makefile](https://github.com/lanl/rgm/tree/main/src/Makefile). 
+You need to install [`FLIT`](https://github.com/lanl/flit) before installing `RGM`, and set the path `flitdir = ...` in the [Makefile](../src/Makefile). 
+
+For the Python interface, run `make so` in `src`, which also requires `python3`, and install the package with `pip install -e python/` from the repository root; see [python/README.md](../python/README.md).
 
 
 ## Parameters
 
 Below is an incomplete list of important parameters for using `RGM` to generate random geological models. 
 
-Here, I use `m` to represent a `rgm2_curved` or `rgm3_curved` class, i.e., 
+Here, I use `m` to represent an `rgm2_curved` or `rgm3_curved` class, i.e., 
 ```fortran
     type(rgm2_curved) :: m
 ```

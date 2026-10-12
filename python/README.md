@@ -1,12 +1,12 @@
 # RGM Python interface
 
-A thin `ctypes` wrapper around the RGM Fortran library — no algorithm is
+A thin `ctypes` wrapper around the RGM Fortran library -- no algorithm is
 reimplemented in Python.
 
 ## Build and install
 
 ```bash
-# 1. Build the shared library (requires libflit compiled with -fPIC)
+# 1. Build the shared library (requires FLIT compiled with -fPIC, and python3)
 cd rgm/src
 make so
 
