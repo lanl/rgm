@@ -27,6 +27,7 @@ p.yn_vary_disp = True            # spatially varying displacement
 p.unconf = 1                     # channel-type unconformity
 p.unconf_shape = 'meander_channel'
 p.yn_karst = True                # karst cave system
+p.nthrust = 2                    # thrust faults, older than the faults
 p.yn_rgt = True
 p.generate()
 
@@ -45,14 +46,10 @@ strings, and 1D numeric lists/arrays are supported; the custom input
 arrays (`refl`, `refl_top`, custom `psf`) are not exposed through the
 Python interface.
 
-## Regenerating the shim after adding Fortran parameters
+## The C-interoperable shim
 
-The C-interoperable shim (`src/module_geological_model_c.f90`) is
-generated from the Fortran type definitions:
-
-```bash
-python3 python/generate_shim.py
-cd src && make so
-```
-
-New parameters become available in Python automatically after this.
+The C-interoperable shim (`src/module_geological_model_c.f90`) is not part of
+the repository. `make so` generates it from the Fortran type definitions with
+`python3 python/generate_shim.py`, and regenerates it whenever they change, so
+new Fortran parameters become available in Python after `make so`. The shim is
+part of `librgm.so` only; the static library `librgm.a` does not contain it.

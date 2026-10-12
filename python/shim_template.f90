@@ -19,9 +19,10 @@
 !
 ! C-interoperable interface to rgm2_curved/rgm3_curved for the Python wrapper.
 !
-! *** GENERATED FILE — do not edit by hand. ***
-! Regenerate with: python3 python/generate_shim.py
-! (parses the parameter components of the two derived types).
+! *** GENERATED FILE -- do not edit by hand. ***
+! make so in src generates it, and regenerates it when the two derived types
+! change, with python3 python/generate_shim.py, which parses their parameter
+! components.
 !
 
 module geological_model_c

@@ -22,9 +22,9 @@
 ! Algorithm
 ! ---------
 ! 1. Terrain: fractal Brownian motion (fBm) surface built by summing octaves
-!    of bilinear-upsampled random noise.  Octave k has grid size min(nx,4·2^k)
-!    and amplitude 2^{−k·hurst}.  Higher hurst → smoother, fewer tributaries;
-!    lower hurst → rougher, denser branching.  A linear regional tilt is added
+!    of bilinear-upsampled random noise.  Octave k has grid size min(nx,4*2^k)
+!    and amplitude 2^{-k*hurst}.  Higher hurst -> smoother, fewer tributaries;
+!    lower hurst -> rougher, denser branching.  A linear regional tilt is added
 !    so water drains consistently toward one side (iy = 1).
 !
 ! 2. Pit filling: Planchon-Darboux iterative forward + backward sweeps raise
@@ -33,31 +33,31 @@
 !    routing.
 !
 ! 3. D8 flow routing: each cell is assigned the direction (out of 8 compass
-!    directions) of its steepest downslope neighbour on the filled DEM.
-!    Diagonal neighbours use distance √2 in the slope calculation.
+!    directions) of its steepest downslope neighbor on the filled DEM.
+!    Diagonal neighbors use distance sqrt(2) in the slope calculation.
 !
-! 4. Topological accumulation: cells are sorted high→low by elevation; each
-!    cell passes its accumulated flow count to its D8 downstream neighbour.
+! 4. Topological accumulation: cells are sorted high->low by elevation; each
+!    cell passes its accumulated flow count to its D8 downstream neighbor.
 !    Result: acc(ix,iy) = number of cells draining through (ix,iy), so the
 !    main trunk has the highest acc value.
 !
 ! 5. Threshold: a geometric binary search finds the smallest accumulation
-!    threshold such that exactly channel_frac · nx · ny cells qualify as
+!    threshold such that exactly channel_frac * nx * ny cells qualify as
 !    channel cells.
 !
 ! 6. Reach decomposition: the network is split into reaches at headwaters
-!    (no upstream channel neighbours) and confluences (≥ 2 upstream channel
-!    neighbours).  Each reach is smoothed with a 3-point weighted average
+!    (no upstream channel neighbors) and confluences (>= 2 upstream channel
+!    neighbors).  Each reach is smoothed with a 3-point weighted average
 !    (endpoints fixed at their exact grid positions so junctions are gapless),
 !    then rendered as a sequence of capsule segments.
-!    Width (and depth in 3-D) scale as W_max · √(acc / acc_max), so the trunk
+!    Width (and depth in 3-D) scale as W_max * sqrt(acc / acc_max), so the trunk
 !    is widest and tributaries taper toward their headwaters.
 !
 ! 7. Canyon mode: instead of rendering capsule tubes, the distance from each
 !    XY cell to the nearest channel axis is computed.  A depth fraction
-!      df = (1 − dist / r_local)^canyon_exp
-!    is derived for each cell (r_local ∝ √acc).  The cell is then filled
-!    erosionally from iz_min = nz − round((nz−1) · df^wall_exp) up to iz = nz,
+!      df = (1 - dist / r_local)^canyon_exp
+!    is derived for each cell (r_local ~ sqrt(acc)).  The cell is then filled
+!    erosionally from iz_min = nz - round((nz-1) * df^wall_exp) up to iz = nz,
 !    producing a body that is deepest at the thalweg and tapers to zero at
 !    the canyon rim.
 !
@@ -83,24 +83,26 @@ module geological_model_drainage
 
     public :: drainage_channel, drainage_canyon
 
-    ! D8 neighbour offsets (E NE N NW W SW S SE)
+    ! D8 neighbor offsets (E NE N NW W SW S SE)
     integer, parameter :: DX8(8) = [1, 1, 0, -1, -1, -1, 0, 1]
     integer, parameter :: DY8(8) = [0, 1, 1, 1, 0, -1, -1, -1]
     real(dp), parameter :: DIST8(8) = [1.0_dp, 1.41421356_dp, 1.0_dp, 1.41421356_dp, &
         1.0_dp, 1.41421356_dp, 1.0_dp, 1.41421356_dp]
 
+    !
     !> Dendritic drainage channel network: plan-view depth map + 3-D incised body.
     !> generate() fills depth_map(ny,nx) (downward-positive) and vol/obj(nnz,ny,nx).
+    !
     type drainage_channel
         integer  :: nx = 256, ny = 256  ! output grid dimensions (map view)
         integer  :: nz = 64             ! vertical layers (incision depth)
         integer  :: nnz = 0
-        real(dp) :: W_max = 10.0_dp     ! trunk channel width in grid cells (tributaries scale as √acc/acc_max)
-        real(dp) :: D_max = 32.0_dp     ! trunk channel depth in layers (tributaries scale as √acc/acc_max)
+        real(dp) :: W_max = 10.0_dp     ! trunk channel width in grid cells (tributaries scale as sqrt(acc/acc_max))
+        real(dp) :: D_max = 32.0_dp     ! trunk channel depth in layers (tributaries scale as sqrt(acc/acc_max))
         real(dp) :: channel_frac = 0.05_dp ! fraction of grid cells rendered as channel (0.02=sparse trunk, 0.1=dense network)
         real(dp) :: hurst = 0.75_dp     ! fBm Hurst exponent: 0.5=rough/branchy terrain, 0.85=smooth/few tributaries
-        real(dp) :: tilt = 3.0_dp       ! regional slope magnitude: high (3–5) → single trunk, low (1–2) → competing trunks
-        real(dp) :: terrain_bg = 0.0_dp ! if > 0, fBm terrain (normalised to [0, terrain_bg]) fills non-channel cells in depth_map
+        real(dp) :: tilt = 3.0_dp       ! regional slope magnitude: high (3-5) -> single trunk, low (1-2) -> competing trunks
+        real(dp) :: terrain_bg = 0.0_dp ! if > 0, fBm terrain (normalized to [0, terrain_bg]) fills non-channel cells in depth_map
         integer  :: seed = -1           ! random seed; also controls drain direction (one of 4 cardinal edges) unless orient is set
         integer  :: orient = -1         ! drain direction: -1 = derived from seed; 0-3 = fixed (2 = toward +x, i.e., flow along x)
         logical  :: yn_depth_only = .false. ! if .true., skip rebuilding 3D vol/obj; only depth_map is produced
@@ -111,18 +113,20 @@ module geological_model_drainage
         procedure :: generate => generate_drainage_channel
     end type drainage_channel
 
+    !
     !> Submarine / incised canyon carved by a dendritic drainage network.
     !> generate() fills depth_map(ny,nx) (downward-positive) and vol/obj(nnz,ny,nx).
+    !
     type drainage_canyon
         integer  :: nx = 256, ny = 256  ! output grid dimensions (map view)
         integer  :: nz = 64             ! vertical layers (canyon depth)
         real(dp) :: W_max = 20.0_dp     ! canyon full-width at surface for the main trunk (grid cells)
-        real(dp) :: channel_frac = 0.015_dp ! channel fraction: 0.01–0.02 → trunk + 1–2 tributaries; 0.05 → more branching
+        real(dp) :: channel_frac = 0.015_dp ! channel fraction: 0.01-0.02 -> trunk + 1-2 tributaries; 0.05 -> more branching
         real(dp) :: hurst = 0.75_dp     ! fBm Hurst exponent controlling terrain roughness
-        real(dp) :: tilt = 4.0_dp       ! regional slope (higher → single dominant trunk)
+        real(dp) :: tilt = 4.0_dp       ! regional slope (higher -> single dominant trunk)
         real(dp) :: canyon_exp = 1.0_dp ! cross-section shape exponent: 1=linear V, 0.5=U-shape, 2=narrow-V
         real(dp) :: wall_exp = 1.0_dp   ! vertical wall curvature: 1=linear, <1=concave/flared, >1=convex/steep-stem
-        real(dp) :: terrain_bg = 0.0_dp ! if > 0, fBm terrain fills non-canyon cells; canyon cells show terrain − canyon_depth
+        real(dp) :: terrain_bg = 0.0_dp ! if > 0, fBm terrain fills non-canyon cells; canyon cells show terrain - canyon_depth
         integer  :: seed = -1           ! random seed; also controls drain direction (one of 4 cardinal edges) unless orient is set
         integer  :: orient = -1         ! drain direction: -1 = derived from seed; 0-3 = fixed (2 = toward +x, i.e., flow along x)
         logical  :: yn_depth_only = .false. ! if .true., skip rebuilding 3D vol/obj; only depth_map is produced
@@ -136,7 +140,7 @@ module geological_model_drainage
 
 contains
 
-    ! ── bilinear upsample: coarse (nx_s × ny_s) → fine (nx_t × ny_t) ──────────
+    ! ------ Bilinear upsample: coarse (nx_s x ny_s) -> fine (nx_t x ny_t) -----
 
     subroutine bilinear_up(src, nx_s, ny_s, nx_t, ny_t, dst)
         integer, intent(in)  :: nx_s, ny_s, nx_t, ny_t
@@ -162,12 +166,14 @@ contains
         end do
     end subroutine bilinear_up
 
-    ! ── fBm terrain: sum of random octaves, coarse-to-fine ────────────────────
-    ! Octave k uses a nc = min(nx, 4·2^k) random grid, amplitude = 2^{-k·hurst}.
-    ! A regional tilt drives drainage toward one of 4 cardinal edges.
-    ! drain_dir: 1=toward iy=ny (+y), 2=toward iy=1 (-y),
-    !            3=toward ix=nx (+x), 4=toward ix=1 (-x).
+    ! ------ Terrain (fBm): sum of random octaves, coarse-to-fine --------------
 
+    !
+    !> Octave k uses a nc = min(nx, 4*2^k) random grid, amplitude = 2^{-k*hurst}.
+    !> A regional tilt drives drainage toward one of 4 cardinal edges.
+    !> drain_dir: 1=toward iy=ny (+y), 2=toward iy=1 (-y),
+    !>            3=toward ix=nx (+x), 4=toward ix=1 (-x).
+    !
     subroutine gen_terrain(nx, ny, hurst, n_oct, tilt, seed, dem, drain_dir)
         integer, intent(in)           :: nx, ny, n_oct, seed
         integer, intent(in), optional :: drain_dir
@@ -183,7 +189,7 @@ contains
         s = mod(abs(seed), 2147483647)
 
         do oct = 0, n_oct - 1
-            nc = min(nx, max(4, 4*(2**oct)))    ! 4, 8, 16, 32, … up to nx
+            nc = min(nx, max(4, 4*(2**oct)))    ! 4, 8, 16, 32, ... up to nx
             allocate (coarse(nc, nc), fine(nx, ny))
             rn = random(nc*nc, dist='uniform', &
                 seed=safe_seed(abs(int(s, 8)*(oct + 1)*1009 + 7)))
@@ -194,7 +200,7 @@ contains
             deallocate (coarse, fine, rn)
         end do
 
-        ! Normalise to [0,1]
+        ! Normalize to [0,1]
         drange = maxval(dem) - minval(dem)
         if (drange > 1.0e-12_dp) then
             dem = (dem - minval(dem))/drange
@@ -222,7 +228,7 @@ contains
         end select
     end subroutine gen_terrain
 
-    ! ── quicksort on index array, descending by key ────────────────────────────
+    ! ------ Quicksort on index array, descending by key -----------------------
 
     recursive subroutine qsort(idx, key, lo, hi)
         integer, intent(inout) :: idx(:)
@@ -261,10 +267,12 @@ contains
         end if
     end subroutine qsort
 
-    ! ── Planchon-Darboux pit-filling ──────────────────────────────────────────
-    ! Raises each pit just enough (by eps per step) so every cell drains to a
-    ! boundary cell.  Forward + backward sweeps converge in O(ny) iterations.
+    ! ------ Planchon-Darboux pit-filling --------------------------------------
 
+    !
+    !> Raises each pit just enough (by eps per step) so every cell drains to a
+    !> boundary cell.  Forward + backward sweeps converge in O(ny) iterations.
+    !
     subroutine pitfill(nx, ny, dem, filled)
         integer, intent(in)  :: nx, ny
         real(dp), intent(in)  :: dem(nx, ny)
@@ -333,12 +341,12 @@ contains
         end do
     end subroutine pitfill
 
-    ! ── D8 flow direction + topological accumulation ──────────────────────────
+    ! ------ D8 flow direction + topological accumulation ----------------------
 
     subroutine flow_accum_2d(nx, ny, dem, dir8, acc)
         integer, intent(in)  :: nx, ny
         real(dp), intent(in)  :: dem(nx, ny)
-        integer, intent(out) :: dir8(nx, ny)   ! D8 direction (1–8) or 0 at outlets
+        integer, intent(out) :: dir8(nx, ny)   ! D8 direction (1-8) or 0 at outlets
         real(dp), intent(out) :: acc(nx, ny)
 
         integer, allocatable :: idx(:)
@@ -366,7 +374,7 @@ contains
             end do
         end do
 
-        ! Sort cells high→low by elevation
+        ! Sort cells high->low by elevation
         n = nx*ny
         allocate (idx(n), flat_dem(n))
         flat_dem = reshape(dem, [n])
@@ -376,7 +384,7 @@ contains
         call qsort(idx, flat_dem, 1, n)
         deallocate (flat_dem)
 
-        ! Accumulate: each cell passes its flow to its D8 downstream neighbour
+        ! Accumulate: each cell passes its flow to its D8 downstream neighbor
         acc = 1.0_dp
         do i = 1, n
             ix = mod(idx(i) - 1, nx) + 1
@@ -395,7 +403,7 @@ contains
         deallocate (idx)
     end subroutine flow_accum_2d
 
-    ! ── 2-D capsule-segment renderer ──────────────────────────────────────────
+    ! ------ 2-D capsule-segment renderer --------------------------------------
 
     subroutine render_seg2(ax, ay, bx, by, W, nx, ny, grid)
         real(dp), intent(in)    :: ax, ay, bx, by, W
@@ -428,7 +436,7 @@ contains
         end do
     end subroutine render_seg2
 
-    ! ── 3-D incised capsule-segment renderer (U-shaped cross-section) ─────────
+    ! ------ 3-D incised capsule-segment renderer (U-shaped cross-section) -----
 
     subroutine render_seg3(ax, ay, bx, by, W, D, nx, ny, nz, vol)
         real(dp), intent(in)    :: ax, ay, bx, by, W, D
@@ -467,7 +475,7 @@ contains
         end do
     end subroutine render_seg3
 
-    ! ── smooth a path in-place (weighted 3-point moving average) ─────────────
+    ! ------ Smooth a path in-place (weighted 3-point moving average) ----------
 
     subroutine smooth_path(px, py, n, n_pass)
         integer, intent(in)    :: n, n_pass
@@ -486,13 +494,14 @@ contains
         deallocate (tx, ty)
     end subroutine smooth_path
 
-    ! ── trace reaches (break-point to break-point), smooth, render (2-D) ────────
-    !
-    ! Decomposes the channel tree into "reaches": segments between headwaters,
-    ! confluences (n_in >= 2), and the outlet.  Each reach is smoothed with its
-    ! two endpoints FIXED at exact grid positions so that every junction is a
-    ! pixel-accurate shared point — no gaps at any scale.
+    ! ------ Trace reaches (break-point to break-point), smooth, render (2-D) ----
 
+    !
+    !> Decomposes the channel tree into "reaches": segments between headwaters,
+    !> confluences (n_in >= 2), and the outlet.  Each reach is smoothed with its
+    !> two endpoints FIXED at exact grid positions so that every junction is a
+    !> pixel-accurate shared point -- no gaps at any scale.
+    !
     subroutine render_network_2d(nx, ny, dir8, acc, threshold, acc_max, W_max, grid)
         integer, intent(in)    :: nx, ny, dir8(nx, ny)
         real(dp), intent(in)    :: acc(nx, ny), threshold, acc_max, W_max
@@ -536,7 +545,7 @@ contains
                     cycle
                 end if
                 if (n_in(ix, iy) == 1) then
-                    cycle   ! interior — start of reach handled upstream
+                    cycle   ! interior -- start of reach handled upstream
                 end if
 
                 ! Break point: headwater (n_in==0) or confluence (n_in>=2)
@@ -583,7 +592,7 @@ contains
         deallocate (is_chan, n_in, px, py, pw)
     end subroutine render_network_2d
 
-    ! ── trace reaches, smooth, render (3-D) ───────────────────────────────────
+    ! ------ Trace reaches, smooth, render (3-D) -------------------------------
 
     subroutine render_network_3d(nx, ny, nz, dir8, acc, threshold, acc_max, W_max, D_max, vol)
         integer, intent(in)    :: nx, ny, nz, dir8(nx, ny)
@@ -677,10 +686,12 @@ contains
         deallocate (is_chan, n_in, px, py, pw, pd)
     end subroutine render_network_3d
 
-    ! ── accumulation threshold via geometric binary search ────────────────────
-    ! Finds the smallest threshold such that at least n_target cells have acc >= threshold.
-    ! Geometric bisection is appropriate for the power-law accumulation distribution.
+    ! ------ Accumulation threshold via geometric binary search ----------------
 
+    !
+    !> Finds the smallest threshold such that at least n_target cells have acc >= threshold.
+    !> Geometric bisection is appropriate for the power-law accumulation distribution.
+    !
     subroutine acc_threshold(acc, nx, ny, channel_frac, threshold, acc_max_out)
         real(dp), intent(in)  :: acc(nx, ny)
         integer, intent(in)  :: nx, ny
@@ -709,16 +720,18 @@ contains
         threshold = lo_t
     end subroutine acc_threshold
 
-    ! ── public: 2-D drainage network ─────────────────────────────────────────
+    ! ------ Public: 2-D drainage network --------------------------------------
 
+    !
     !>   W_max        : maximum channel width in grid cells (trunk)
     !>   channel_frac : fraction of cells to render as channels (e.g. 0.05)
-    !>   hurst        : fBm Hurst exponent — controls sinuosity
+    !>   hurst        : fBm Hurst exponent -- controls sinuosity
     !>                  0.5=rough/sinuous, 0.85=smooth/straight
-    !>   seed         : random seed (different values → different patterns)
+    !>   seed         : random seed (different values -> different patterns)
     !>   tilt         : regional slope strength (optional, default 3.0)
-    !>                  high (3–5) → 1 dominant trunk
-    !>                  moderate (1–2) → 2–3 competing trunks
+    !>                  high (3-5) -> 1 dominant trunk
+    !>                  moderate (1-2) -> 2-3 competing trunks
+    !
     subroutine drainage_slice(nx, ny, grid, W_max, channel_frac, hurst, seed, tilt)
         integer, intent(in)           :: nx, ny, seed
         real(sp), allocatable, intent(out) :: grid(:, :)
@@ -749,10 +762,12 @@ contains
         deallocate (acc, dir8)
     end subroutine drainage_slice
 
-    ! ── public: 3-D drainage volume ───────────────────────────────────────────
+    ! ------ Public: 3-D drainage volume ---------------------------------------
 
+    !
     !>   D_max : maximum channel depth in layers (incised from iz=nz downward)
     !>   tilt  : optional regional slope (see drainage_slice for guidance)
+    !
     subroutine drainage_volume(nx, ny, nz, vol, W_max, D_max, channel_frac, hurst, seed, tilt, drain_dir_in)
         integer, intent(in)           :: nx, ny, nz, seed
         real(sp), allocatable, intent(out) :: vol(:, :, :)
@@ -789,19 +804,20 @@ contains
         deallocate (acc, dir8)
     end subroutine drainage_volume
 
-    ! ── canyon rendering: distance-to-channel → erosional depth fill ─────────────
-    !
-    ! For every XY cell, finds the nearest channel segment and computes a
-    ! normalised depth fraction:
-    !
-    !   d_norm = dist / r_seg          (r_seg = half-width ∝ √acc)
-    !   df     = (1 − d_norm)^p        (p = canyon_exp, controls cross-section shape)
-    !            p = 1 → linear V,  p < 1 → U-shape,  p > 1 → narrow V
-    !
-    ! Then fills vol(iix,iiy, iz_min:nz) = 1, where
-    !   iz_min = nz − round((nz−1) × df)
-    ! giving a body that is DEEPEST at the thalweg and tapers to zero at the rim.
+    ! ------ Canyon rendering: distance-to-channel -> erosional depth fill -----
 
+    !
+    !> For every XY cell, finds the nearest channel segment and computes a
+    !> normalized depth fraction:
+    !>
+    !>   d_norm = dist / r_seg          (r_seg = half-width ~ sqrt(acc))
+    !>   df     = (1 - d_norm)^p        (p = canyon_exp, controls cross-section shape)
+    !>            p = 1 -> linear V,  p < 1 -> U-shape,  p > 1 -> narrow V
+    !>
+    !> Then fills vol(iix,iiy, iz_min:nz) = 1, where
+    !>   iz_min = nz - round((nz-1) * df)
+    !> giving a body that is DEEPEST at the thalweg and tapers to zero at the rim.
+    !
     subroutine render_canyon_3d(nx, ny, nz, dir8, acc, threshold, acc_max, &
             W_max, canyon_exp, vol, wall_exp)
         integer, intent(in)    :: nx, ny, nz, dir8(nx, ny)
@@ -821,7 +837,7 @@ contains
         allocate (depth_norm(nx, ny))
         depth_norm = 0.0_dp
 
-        ! ── reach decomposition (same logic as render_network_2d) ─────────────────
+        ! ------ Reach decomposition (same logic as render_network_2d) ---------
         allocate (is_chan(nx, ny), n_in(nx, ny))
         is_chan = (acc >= threshold)
         n_in = 0
@@ -925,11 +941,11 @@ contains
         end do
         deallocate (is_chan, n_in, px, py, pw)
 
-        ! ── erosional fill: each cell open from iz_min up to the seabed (iz=nz) ───
+        ! ------ Erosional fill: each cell open from iz_min up to the seabed (iz=nz) ----
         ! wall_exp remaps depth_norm before the iz_min conversion:
         !   wall_exp = 1.0 : linear walls (default)
-        !   wall_exp < 1.0 : concave – canyon flares open quickly from the thalweg
-        !   wall_exp > 1.0 : convex – narrow stem, rapid widening near surface
+        !   wall_exp < 1.0 : concave - canyon flares open quickly from the thalweg
+        !   wall_exp > 1.0 : convex - narrow stem, rapid widening near surface
         block
             real(dp) :: wexp, dn
             wexp = 1.0_dp
@@ -952,24 +968,26 @@ contains
 
     end subroutine render_canyon_3d
 
-    ! ── public: 3-D submarine canyon volume ──────────────────────────────────────
+    ! ------ Public: 3-D submarine canyon volume -------------------------------
+
     !
     !> Generate a 3-D submarine canyon body from a dendritic drainage network.
     !>
     !> The canyon depth at each XY cell is determined by how close that cell is to
-    !> the nearest channel segment, scaled by local channel width (∝ √accumulation):
-    !>   depth_frac = (1 − dist/r_local)^canyon_exp,  r_local ∝ √acc / acc_max
+    !> the nearest channel segment, scaled by local channel width (~ sqrt(accumulation)):
+    !>   depth_frac = (1 - dist/r_local)^canyon_exp,  r_local ~ sqrt(acc/acc_max)
     !>
     !> The volume is filled erosionally: vol(ix,iy, iz_min:nz) = 1, so the body
     !> is deepest at the thalweg and tapers to zero at the canyon rim.
     !>
     !>   W_max        : canyon full-width at surface for the main trunk (grid cells)
     !>   channel_frac : fraction of cells that are channels
-    !>                  0.01–0.02 → main trunk only + 1–2 tributaries (best for
-    !>                  canyon simulation);  0.05 → more branching
+    !>                  0.01-0.02 -> main trunk only + 1-2 tributaries (best for
+    !>                  canyon simulation);  0.05 -> more branching
     !>   canyon_exp   : cross-section exponent  (1=V-shape, 0.5=U-shape, 2=narrow-V)
     !>   wall_exp     : vertical wall curvature (1=linear, <1=concave/flared, >1=convex/steep-stem)
-    !>   tilt         : regional slope (3–5 → single dominant trunk)
+    !>   tilt         : regional slope (3-5 -> single dominant trunk)
+    !
     subroutine build_drainage_canyon(nx, ny, nz, vol, W_max, channel_frac, hurst, &
             seed, tilt, canyon_exp, wall_exp, drain_dir_in)
         integer, intent(in)           :: nx, ny, nz, seed
@@ -1016,7 +1034,7 @@ contains
 
     end subroutine build_drainage_canyon
 
-    ! ── OOP generate subroutines ─────────────────────────────────────────────────
+    ! ------ OOP generate subroutines ------------------------------------------
 
     subroutine generate_drainage_channel(self)
         class(drainage_channel), intent(inout) :: self
@@ -1067,7 +1085,7 @@ contains
                 drain_dir=drain_dir_val)
             dem_bg = real(transpose(dem_bg)*self%terrain_bg, sp)
             ! Background cells get terrain value [0, terrain_bg].
-            ! Channel cells get terrain − channel_depth (negative = incised below surface).
+            ! Channel cells get terrain - channel_depth (negative = incised below surface).
             where (self%depth_map == 0.0_sp)
                 self%depth_map = dem_bg
             elsewhere

@@ -38,8 +38,10 @@ module geological_model_utility
         module procedure :: random_mask_smooth_3d
     end interface
 
-    ! Fractal noise (multi-octave Perlin noise)
-    ! See https://we.copernicus.org/articles/22/1/2022/
+    !
+    !> Fractal noise (multi-octave Perlin noise)
+    !> See https://we.copernicus.org/articles/22/1/2022/
+    !
     type fractal_noise_1d
         ! Number of grid points
         integer :: n1
@@ -54,8 +56,8 @@ module geological_model_utility
         ! In a fractal, fills space, higher lacunarity indicating more or larger gaps.
         ! In the context of Perlin noise the lacunarity parameter is a multiplier that
         ! determines the rate of change in the number of periods between successive waves.
-        ! For example, when lacunarity = 2, then the number of periods doubles for
-        ! each successive wave (Fig. 1a to c), or when lacunarity = 4,
+        ! For example, when lacunarity = 2, then the number of periods doubles for
+        ! each successive wave (Fig. 1a to c), or when lacunarity = 4,
         ! then the number of periods quadruples for each successive wave.
         real :: lacunarity = 2.0
     contains
@@ -231,7 +233,7 @@ contains
     end function ricker_deriv_wavelet
 
     !
-    !> @brief Omsby wavelet
+    !> @brief Ormsby wavelet
     !
     function ormsby_wavelet(f, t) result(wavelet)
 

@@ -21,6 +21,7 @@ module geological_model_3d_curved
     use libflit
     use geological_model_utility
     use geological_model_realism
+    use geological_model_thrust
     use geological_model_meander
     use geological_model_drainage
     use geological_model_karst
@@ -60,8 +61,10 @@ module geological_model_3d_curved
     ! strike of the fault.
     !
 
-    ! 3D random geological model with curved faults
-    ! Meanings of the parameters are similar with those in the 2D case
+    !
+    !> 3D random geological model with curved faults
+    !> Meanings of the parameters are similar with those in the 2D case
+    !
     type rgm3_curved
 
         !==============================================================================================
@@ -89,11 +92,11 @@ module geological_model_3d_curved
         integer :: ng = 2
         real, dimension(1:2) :: refl_height = [0.0, 10.0]
         real, dimension(1:2) :: refl_height_top = [0.0, 5.0]
-        !> Range of Gaussian standard devision along x2 for refl_shape = gaussian
+        !> Range of Gaussian standard deviation along x2 for refl_shape = gaussian
         real, dimension(1:2) :: refl_sigma2 = [0.0, 0.0]
         !> Range of Gaussian mean along x2 for refl_shape = gaussian
         real, dimension(1:2) :: refl_mu2 = [0.0, 0.0]
-        !> Range of Gaussian standard devision along x3 for refl_shape = gaussian
+        !> Range of Gaussian standard deviation along x3 for refl_shape = gaussian
         real, dimension(1:2) :: refl_sigma3 = [0.0, 0.0]
         !> Range of Gaussian mean along x3 for refl_shape = gaussian
         real, dimension(1:2) :: refl_mu3 = [0.0, 0.0]
@@ -137,6 +140,7 @@ module geological_model_3d_curved
         !> Image options and migration noise, as in rgm2_curved
         logical :: yn_dip_independent = .false.
         real :: f0_bottom = 0.0
+        real :: wave_phase = 0.0
         real :: illum_level = 0.0
         real :: illum_smooth = 30.0
         real, dimension(1:2) :: jitter_shift = [0.0, 0.0]
@@ -156,7 +160,7 @@ module geological_model_3d_curved
         !> Velocity perturbation of layers
         real :: delta_v = 500.0
 
-        !> Dip increase/descrease at the top compared with the top
+        !> Dip increase/decrease at the top compared with the top
         real, dimension(1:2) :: delta_dip = [15.0, 30.0]
 
         !> Range of the maximum strike deviation (in degrees) along a fault.
@@ -211,6 +215,38 @@ module geological_model_3d_curved
         !> concentrate the deformation near the fault (drag-fold style), while
         !> larger values approach the rigid-block end member.
         real, dimension(1:2) :: disp_decay_width = [0.5, 1.0]
+
+        !> Thrust faults, which are older than the faults (see doc/README.md):
+        !> number of thrusts; ranges of the ramp dip (degrees), the slip along the
+        !> fault ([0, 0] = [0.05, 0.15] of the model size along the transport
+        !> direction), the decollement depth and the final tip depth (relative to
+        !> n1; a tip depth < 0 is above the model), the arc length of the rounded
+        !> fault bends ([0, 0] = [0.15, 0.3]*n1), the growth of the fold hinge width
+        !> per grid point of distance from the fault, the ratio of tip propagation
+        !> to slip (P/S) and the apical angle of the trishear zone (degrees); the
+        !> probability of a roof (upper flat) shared by the thrusts (a duplex for
+        !> nthrust > 1) and its depth range (relative to n1); the probability of a
+        !> backthrust (pop-up); the sequence ('forward' = piggyback, 'backward' or 'random')
+        integer :: nthrust = 0
+        real, dimension(1:2) :: thrust_dip = [20.0, 35.0]
+        real, dimension(1:2) :: thrust_disp = [0.0, 0.0]
+        real, dimension(1:2) :: thrust_z = [0.85, 1.1]
+        real, dimension(1:2) :: thrust_tip_z = [-0.2, 0.5]
+        real, dimension(1:2) :: thrust_bend = [0.0, 0.0]
+        real, dimension(1:2) :: thrust_widen = [0.2, 0.4]
+        real, dimension(1:2) :: thrust_ps = [1.5, 3.0]
+        real, dimension(1:2) :: thrust_trishear = [40.0, 100.0]
+        real :: thrust_roof = 0.0
+        real, dimension(1:2) :: thrust_roof_z = [0.3, 0.6]
+        real :: thrust_back = 0.0
+        character(len=12) :: thrust_sequence = 'forward'
+        !> Range of the transport azimuth of the thrusts (degrees, from x2 toward
+        !> x3), of the maximum strike deviation along the ramp traces (degrees),
+        !> and of the half length of the slip patch along strike (relative to
+        !> 0.5*(n2 + n3); [0, 0] = through-going thrusts)
+        real, dimension(1:2) :: thrust_azimuth = [0.0, 360.0]
+        real, dimension(1:2) :: thrust_delta_strike = [0.0, 0.0]
+        real, dimension(1:2) :: thrust_radius = [0.0, 0.0]
 
         !==============================================================================================
         integer :: unconf = 0
@@ -296,15 +332,18 @@ module geological_model_3d_curved
         !==============================================================================================
         !> Elastic
         logical :: yn_elastic = .false.
-        !> Vp/Vs ratios
+        !> Range of the Vp/Vs ratios; each layer has a random ratio in this range
         real, dimension(1:2) :: vpvsratio = [1.5, 1.8]
+        !> Range of the P-wave incidence angles (degrees) stacked in the PS image; the
+        !> SP image uses the same ray parameters
+        real, dimension(1:2) :: angle_ps = [10.0, 40.0]
         !> Elastic models
         real, allocatable, dimension(:, :, :) :: vp, vs, rho
         real :: rho_a = 310.0, rho_b = 0.25, rho_c = 0.0
         !> Elastic images
         real, allocatable, dimension(:, :, :) :: image_pp, image_ps, image_sp, image_ss
-        !> Salt body's Vs
-        real :: salt_vs = 4400.0
+        !> Salt body's Vs; Vp/Vs of halite is about 1.75
+        real :: salt_vs = 2850.0
         !> Is salt before or after unconformity?
         logical :: salt_before_unconf = .true.
 
@@ -443,6 +482,13 @@ contains
             if (this%yn_dip_independent) then
                 this%psf = isotropic_psf_3d(wavelet*psf1, n2, n3)
             end if
+            ! Constant phase rotation of the wavelet, applied along depth as to every trace
+            if (this%wave_phase /= 0) then
+                this%psf = phase_rotate_3d(this%psf, this%wave_phase)
+            end if
+            ! Unit response to a flat reflector: its image has the amplitude of its
+            ! reflection coefficient, whatever the wavelet and the PSF widths
+            this%psf = this%psf/maxval(abs(sum(sum(this%psf, dim=3), dim=2)))
         else
             call assert(size(this%psf, 1) == this%n1 .and. size(this%psf, 2) == this%n2 &
                 .and. size(this%psf, 3) == this%n3, ' Error: shape of psf must be n1 x n2 x n3')
@@ -459,6 +505,7 @@ contains
         real, allocatable, dimension(:) :: rfc
         real, allocatable, dimension(:, :, :) :: ww
         real :: fps, fss
+        real, dimension(1:2) :: rcw
 
         n1 = this%n1
         n2 = this%n2
@@ -484,6 +531,21 @@ contains
                     this%image_ps(i, j, k) = rfc(2)
                     this%image_sp(i, j, k) = rfc(3)
                     this%image_ss(i, j, k) = rfc(4)
+                end do
+            end do
+        end do
+        !$omp end parallel do
+
+        ! The PS and SP images stack the incidence angles in angle_ps, wider than
+        ! those of the PP and SS images since PS vanishes at normal incidence
+        !$omp parallel do private(i, j, k, rcw) collapse(3)
+        do k = 1, n3
+            do j = 1, n2
+                do i = 1, n1
+                    rcw = converted_wave_stack(this%angle_ps, vp(i, j, k), vs(i, j, k), rho(i, j, k), &
+                        vp(i + 1, j, k), vs(i + 1, j, k), rho(i + 1, j, k))
+                    this%image_ps(i, j, k) = rcw(1)
+                    this%image_sp(i, j, k) = rcw(2)
                 end do
             end do
         end do
@@ -769,18 +831,20 @@ contains
 
         logical :: yn_aux, yn_rgt_user, yn_fault_user
 
-        if (this%nf == 0) then
+        if (this%nf == 0 .and. this%nthrust == 0) then
             this%yn_fault = .false.
         end if
 
-        ! Dip-independent imaging and migration noise need the RGT and the fault labels;
+        ! Dip-independent imaging and migration noise need the RGT and the fault labels,
+        ! and thrust faults and the layer Vp/Vs ratios of elastic models need the RGT;
         ! compute them internally and release them afterwards if not requested
-        yn_aux = this%yn_dip_independent .or. (this%noise_level /= 0 .and. this%noise_type == 'migration')
+        yn_aux = this%yn_dip_independent .or. (this%noise_level /= 0 .and. this%noise_type == 'migration') &
+            .or. this%nthrust > 0 .or. this%yn_elastic
         yn_rgt_user = this%yn_rgt
         yn_fault_user = this%yn_fault
         if (yn_aux) then
             this%yn_rgt = .true.
-            if (this%nf > 0) then
+            if (this%nf > 0 .or. this%nthrust > 0) then
                 this%yn_fault = .true.
             end if
         end if
@@ -854,6 +918,9 @@ contains
         real, allocatable, dimension(:) :: rfc
         real :: xcenter, ycenter
         real :: m1, m2, m3
+        type(thrust_fault), allocatable, dimension(:) :: th
+        integer :: pe1, pe2
+        real :: psi, nlat
 
         fwidth = this%fwidth
         dt = 0.001
@@ -942,12 +1009,32 @@ contains
             disp = zeros(1)
         end if
 
+        ! Thrust faults: a common transport azimuth, with backthrusts opposite; the
+        ! ramp traces and the slip vary along strike
+        if (this%nthrust > 0) then
+            psi = rand(range=this%thrust_azimuth, seed=safe_seed(int(this%seed, 8)*227))*const_deg2rad
+            nlat = abs(this%n2*cos(psi)) + abs(this%n3*sin(psi))
+            th = thrust_system(this%nthrust, this%n1, nlat, this%seed, this%thrust_dip, this%thrust_disp, &
+                this%thrust_z, this%thrust_tip_z, this%thrust_bend, this%thrust_widen, this%thrust_ps, &
+                this%thrust_trishear, this%thrust_roof, this%thrust_roof_z, this%thrust_back, this%thrust_sequence)
+            do i = 1, this%nthrust
+                th(i)%azimuth = psi + merge(0.0, real(const_pi), th(i)%sense > 0)
+                th(i)%dstrike = rand(range=this%thrust_delta_strike, seed=safe_seed(int(this%seed, 8)*229 + i))*const_deg2rad
+                th(i)%radius = rand(range=this%thrust_radius, seed=safe_seed(int(this%seed, 8)*233 + i))*0.5*(this%n2 + this%n3)
+                th(i)%center = rand(range=[-0.2, 0.2], seed=safe_seed(int(this%seed, 8)*239 + i))*0.5*(this%n2 + this%n3)
+            end do
+            call thrust_padding(th, pe1, pe2)
+        end if
+
         ! The dimensions of the padded model
         sumdisp = disp*(-sin(rake)*sin(dip))
         m1 = max(sum(sumdisp, mask=sumdisp > 0), -sum(sumdisp, mask=sumdisp < 0))
         m2 = max(maxval(abs(this%refl_slope)), maxval(abs(this%refl_slope_top)))
         m3 = max(maxval(abs(this%refl_height)), maxval(abs(this%refl_height_top)))
         ne1 = ceiling(max(m1, m2) + m3)
+        if (this%nthrust > 0) then
+            ne1 = ne1 + pe1
+        end if
         n1 = n1 + 2*ne1
 
         if (maxval(abs(this%delta_strike)) > 0) then
@@ -963,6 +1050,10 @@ contains
 
             sumdisp = disp*(cos(rake)*cos(strike) + sin(rake)*cos(dip)*sin(strike))
             ne3 = ceiling(max(sum(sumdisp, mask=sumdisp > 0), -sum(sumdisp, mask=sumdisp < 0)))
+        end if
+        if (this%nthrust > 0) then
+            ne2 = ne2 + pe2
+            ne3 = ne3 + pe2
         end if
         n2 = n2 + 2*ne2
         n3 = n3 + 2*ne3
@@ -1304,6 +1395,11 @@ contains
         end if
         if (this%yn_rgt) then
             tt = zeros(n1, n2, n3)
+        end if
+
+        ! Add thrust faults, which are older than the faults
+        if (this%nthrust > 0) then
+            call thrust_apply_3d(th, ne1, fwidth, nf, w, t, m, f, fdip, fstrike, frake, fdisp, this%yn_facies)
         end if
 
         if (nf >= 1) then
@@ -1695,7 +1791,9 @@ contains
         vp = rescale(vp, [this%vmin, this%vmax])
         rho = this%rho_a*vp**this%rho_b + this%rho_c
         if (this%yn_elastic) then
-            vs = vp/rescale(vp, this%vpvsratio)
+            ! Each layer has a random Vp/Vs ratio, which follows the layer through the RGT
+            vs = vp/layer_property_3d(t(ne1 + 1:ne1 + this%n1 + 1, ne2 + 1:ne2 + this%n2, ne3 + 1:ne3 + this%n3), nd, &
+                random(nl - 1, range=this%vpvsratio, seed=safe_seed(int(this%seed, 8)*241)))
         end if
 
         n1 = size(vp, 1)
@@ -2085,6 +2183,7 @@ contains
             end if
             if (i <= this%unconf) then
                 g(i)%nf = 0
+                g(i)%nthrust = 0
                 g(i)%lwv = abs(g(i)%lwv/2.0)
                 g(i)%lwh = abs(g(i)%lwh/2.0)
                 g(i)%refl_height = g(i)%unconf_refl_height

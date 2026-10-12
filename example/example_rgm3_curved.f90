@@ -82,6 +82,61 @@ program test
     end block
 
     ! ==================================================================
+    ! Thrust faults: a blind thrust whose slip dies out along strike, and a
+    ! duplex cut by younger normal faults; the images are dip-independent
+
+    block
+
+        type(rgm3_curved) :: p
+
+        ! The fold above the tip of the blind thrust plunges out along strike,
+        ! and the ramp trace is curved in map view
+        p%n1 = 128
+        p%n2 = 160
+        p%n3 = 160
+        p%nl = 30
+        p%nf = 0
+        p%lwv = 0.4
+        p%lwh = 0.1
+        p%refl_shape = 'random'
+        p%refl_smooth = 30
+        p%refl_height = [0.0, 8.0]
+        p%refl_height_top = [0.0, 4.0]
+        p%yn_dip_independent = .true.
+        p%noise_level = 0.0
+        p%nthrust = 1
+        p%thrust_z = [1.1, 1.2]
+        p%thrust_tip_z = [0.3, 0.4]
+        p%thrust_disp = [25.0, 30.0]
+        p%thrust_radius = [0.35, 0.4]
+        p%thrust_delta_strike = [10.0, 15.0]
+        p%seed = 214
+        call p%generate
+        call output_array(p%vp, './example_3d_vp_thrust_blind.bin')
+        call output_array(p%image, './example_3d_image_thrust_blind.bin')
+        call output_array(p%fault, './example_3d_fault_thrust_blind.bin')
+
+        ! A duplex of three thrusts, cut by two younger normal faults
+        p%nf = 2
+        p%dip = [60.0, 75.0]
+        p%disp = [6.0, 10.0]
+        p%nthrust = 3
+        p%thrust_roof = 1.0
+        p%thrust_z = [0.85, 0.9]
+        p%thrust_roof_z = [0.5, 0.55]
+        p%thrust_disp = [20.0, 25.0]
+        p%thrust_radius = [0.0, 0.0]
+        p%thrust_delta_strike = [0.0, 0.0]
+        p%seed = 215
+        call p%generate
+        call output_array(p%vp, './example_3d_vp_thrust_duplex.bin')
+        call output_array(p%image, './example_3d_image_thrust_duplex.bin')
+        call output_array(p%fault, './example_3d_fault_thrust_duplex.bin')
+        call output_array(p%fault_strike, './example_3d_fstrike_thrust_duplex.bin')
+
+    end block
+
+    ! ==================================================================
     ! Strike-slip fault
 
     block

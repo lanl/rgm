@@ -1,127 +1,200 @@
 
 #
 # Examples of the RGM v2.0 features through the Python interface: folded
-# layers, faults, unconformities, salt bodies, karst cave systems, and elastic
-# models. The figures are plotted with pymplot and written to the current
-# directory.
+# layers, faults, thrust faults, unconformities, salt bodies, karst cave
+# systems, and elastic models. The figures are plotted with pymplot and
+# written to the current directory.
 #
 
 import rgm
 from pymplot import showmatrix, showslice
 
-# ==================================================================
-# Layers and folds
+# # ==================================================================
+# # Layers and folds
 
-# Folded layers without faults (nf = 0), with RGT and facies
-p = rgm.rgm2(n1=151, n2=301, nl=25, nf=0, seed=101, lwv=0.4, lwh=0.2,
-             refl_shape='perlin', refl_shape_top='perlin', refl_smooth=3, refl_smooth_top=3,
-             refl_height=[0.0, 25.0], refl_height_top=[0.0, 4.0],
-             noise_level=0.01, psf_sigma=[10.0, 1.0], yn_rgt=True, yn_facies=True)
+# # Folded layers without faults (nf = 0), with RGT and facies
+# p = rgm.rgm2(n1=151, n2=301, nl=25, nf=0, seed=101, lwv=0.4, lwh=0.2,
+#              refl_shape='perlin', refl_shape_top='perlin', refl_smooth=3, refl_smooth_top=3,
+#              refl_height=[0.0, 25.0], refl_height_top=[0.0, 4.0],
+#              noise_level=0.01, psf_sigma=[10.0, 1.0], yn_rgt=True, yn_facies=True)
+# p.generate()
+# showmatrix(p.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X',
+#            outfile='layers_2d_vp.png')
+# showmatrix(p.image, colormap='binary', cperc=99, label1='Z', label2='X',
+#            outfile='layers_2d_image.png')
+# showmatrix(p.rgt, colormap='jet', legend=True, unit='RGT', label1='Z', label2='X',
+#            outfile='layers_2d_rgt.png')
+# showmatrix(p.facies, colormap='jet', legend=True, unit='Facies', label1='Z', label2='X',
+#            outfile='layers_2d_facies.png')
+
+# # Gaussian anticlines and synclines along rotated axes
+# q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=0, seed=102, lwv=0.4, lwh=0.2,
+#              refl_shape='gaussian', refl_shape_top='perlin', refl_smooth=0, refl_smooth_top=3,
+#              refl_height=[0.0, 50.0], refl_height_top=[0.0, 4.0],
+#              ng=3, rotate_fold=True, refl_sigma2=[30.0, 60.0], refl_sigma3=[30.0, 60.0],
+#              noise_level=0.01, psf_sigma=[10.0, 1.0, 1.0], yn_rgt=True)
+# q.generate()
+# showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
+#           outfile='fold_3d_vp.png')
+# showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
+#           outfile='fold_3d_image.png')
+# showslice(q.rgt, colormap='jet', legend=True, unit='RGT', label1='Z', label2='X', label3='Y',
+#           outfile='fold_3d_rgt.png')
+
+# # ==================================================================
+# # Faults; the fault labels are displayed on top of the images
+
+# # Listric normal and reverse faults in 2D
+# p = rgm.rgm2(n1=151, n2=301, nl=25, nf=4, seed=201, lwv=0.4, lwh=0.2,
+#              refl_shape='perlin', refl_shape_top='perlin', refl_smooth=3, refl_smooth_top=3,
+#              refl_height=[0.0, 15.0], refl_height_top=[0.0, 4.0],
+#              dip=[60.0, 120.0], disp=[5.0, 12.0], delta_dip=[0.0, 20.0],
+#              noise_level=0.01, psf_sigma=[10.0, 1.0])
+# p.generate()
+# showmatrix(p.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X',
+#            outfile='fault_2d_vp.png')
+# showmatrix(p.image, colormap='binary', cperc=99, label1='Z', label2='X',
+#            outfile='fault_2d_image.png')
+# showmatrix(p.fault, background=p.image, backcolormap='binary', backcperc=99, colormap='jet', alphas='0:0,0.5:1',
+#            label1='Z', label2='X', outfile='fault_2d_fault.png')
+
+# # Faults in 3D with prescribed dip, strike and rake
+# q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=5, seed=202, lwv=0.4, lwh=0.2,
+#              refl_shape='perlin', refl_shape_top='perlin', refl_smooth=3, refl_smooth_top=3,
+#              refl_height=[0.0, 15.0], refl_height_top=[0.0, 4.0],
+#              dip=[60.0, 120.0], strike=[20.0, 60.0], rake=[0.0, 30.0], disp=[8.0, 16.0], delta_dip=[0.0, 15.0],
+#              noise_level=0.01, psf_sigma=[10.0, 1.0, 1.0])
+# q.generate()
+# showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
+#           outfile='fault_3d_vp.png')
+# showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
+#           outfile='fault_3d_image.png')
+# showslice(q.fault, background=q.image, backcolormap='binary', backclip=2*q.image.std(),
+#           colormap='jet', alphas='0:0,0.5:1', label1='Z', label2='X', label3='Y', outfile='fault_3d_fault.png')
+
+# # Faults with strike varying along the fault (curved in map view)
+# q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=4, seed=203, lwv=0.4, lwh=0.2,
+#              refl_shape='perlin', refl_shape_top='perlin', refl_smooth=3, refl_smooth_top=3,
+#              refl_height=[0.0, 15.0], refl_height_top=[0.0, 4.0],
+#              dip=[60.0, 120.0], disp=[10.0, 20.0], delta_dip=[0.0, 15.0],
+#              delta_strike=[15.0, 25.0], strike_nperiod=2,
+#              noise_level=0.01, psf_sigma=[10.0, 1.0, 1.0])
+# q.generate()
+# showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
+#           outfile='fault_strike_3d_vp.png')
+# showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
+#           outfile='fault_strike_3d_image.png')
+# showslice(q.fault, background=q.image, backcolormap='binary', backclip=2*q.image.std(),
+#           colormap='jet', alphas='0:0,0.5:1', label1='Z', label2='X', label3='Y', outfile='fault_strike_3d_fault.png')
+
+# # Faults with an elliptical slip patch: the displacement dies out toward the
+# # fault tips
+# q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=4, seed=204, lwv=0.4, lwh=0.2,
+#              refl_shape='perlin', refl_shape_top='perlin', refl_smooth=3, refl_smooth_top=3,
+#              refl_height=[0.0, 15.0], refl_height_top=[0.0, 4.0],
+#              dip=[60.0, 120.0], disp=[10.0, 20.0], delta_strike=[10.0, 20.0],
+#              yn_vary_disp=True, disp_radius_strike=[0.4, 0.6], disp_radius_dip=[0.5, 0.8],
+#              disp_center_dip=[0.3, 0.6],
+#              noise_level=0.01, psf_sigma=[10.0, 1.0, 1.0])
+# q.generate()
+# showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
+#           outfile='fault_vary_disp_3d_vp.png')
+# showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
+#           outfile='fault_vary_disp_3d_image.png')
+# showslice(q.fault_disp, background=q.image, backcolormap='binary', backclip=2*q.image.std(),
+#           colormap='jet', alphas='0:0,0.5:1', legend=True, unit='Displacement', label1='Z', label2='X', label3='Y',
+#           outfile='fault_vary_disp_3d_disp.png')
+
+# # Displacement decaying away from the faults, which creates drag folds and
+# # rollovers
+# q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=3, seed=205, lwv=0.4, lwh=0.2,
+#              refl_shape='perlin', refl_shape_top='perlin', refl_smooth=3, refl_smooth_top=3,
+#              refl_height=[0.0, 15.0], refl_height_top=[0.0, 4.0],
+#              dip=[60.0, 120.0], disp=[12.0, 22.0], delta_strike=[10.0, 20.0],
+#              yn_vary_disp=True, disp_radius_strike=[0.4, 0.6], disp_radius_dip=[0.5, 0.8],
+#              yn_disp_decay=True, disp_decay_width=[0.3, 0.5],
+#              noise_level=0.01, psf_sigma=[10.0, 1.0, 1.0])
+# q.generate()
+# showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
+#           outfile='fault_decay_3d_vp.png')
+# showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
+#           outfile='fault_decay_3d_image.png')
+# showslice(q.fault_disp, background=q.image, backcolormap='binary', backclip=2*q.image.std(),
+#           colormap='jet', alphas='0:0,0.5:1', legend=True, unit='Displacement', label1='Z', label2='X', label3='Y',
+#           outfile='fault_decay_3d_disp.png')
+
+# ==================================================================
+# Thrust faults with fault-bend and fault-propagation folds; the images are
+# dip-independent, so that the steep fold limbs stay visible
+
+# Imbricate fan: three thrusts in a piggyback sequence, with fault-propagation
+# folds above the fault tips
+p = rgm.rgm2(n1=151, n2=301, nl=30, nf=0, seed=251, lwv=0.4, lwh=0.1,
+             refl_shape='random', refl_smooth=30, refl_height=[0.0, 8.0], refl_height_top=[0.0, 4.0],
+             nthrust=3, thrust_vergence='right', thrust_z=[1.1, 1.2], thrust_tip_z=[0.1, 0.5],
+             yn_dip_independent=True, noise_level=0.0)
 p.generate()
 showmatrix(p.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X',
-           outfile='layers_2d_vp.png')
+           outfile='thrust_imbricate_2d_vp.png')
 showmatrix(p.image, colormap='binary', cperc=99, label1='Z', label2='X',
-           outfile='layers_2d_image.png')
-showmatrix(p.rgt, colormap='jet', legend=True, unit='RGT', label1='Z', label2='X',
-           outfile='layers_2d_rgt.png')
-showmatrix(p.facies, colormap='jet', legend=True, unit='Facies', label1='Z', label2='X',
-           outfile='layers_2d_facies.png')
+           outfile='thrust_imbricate_2d_image.png')
+showmatrix(p.fault_dip, background=p.image, backcolormap='binary', backcperc=99, colormap='jet', alphas='0:0,0.1:1',
+           label1='Z', label2='X', outfile='thrust_imbricate_2d_fault.png')
 
-# Gaussian anticlines and synclines along rotated axes
-q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=0, seed=102, lwv=0.4, lwh=0.2,
-             refl_shape='gaussian', refl_shape_top='perlin', refl_smooth=0, refl_smooth_top=3,
-             refl_height=[0.0, 50.0], refl_height_top=[0.0, 4.0],
-             ng=3, rotate_fold=True, refl_sigma2=[30.0, 60.0], refl_sigma3=[30.0, 60.0],
-             noise_level=0.01, psf_sigma=[10.0, 1.0, 1.0], yn_rgt=True)
-q.generate()
-showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
-          outfile='fold_3d_vp.png')
-showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
-          outfile='fold_3d_image.png')
-showslice(q.rgt, colormap='jet', legend=True, unit='RGT', label1='Z', label2='X', label3='Y',
-          outfile='fold_3d_rgt.png')
-
-# ==================================================================
-# Faults; the fault labels are displayed on top of the images
-
-# Listric normal and reverse faults in 2D
-p = rgm.rgm2(n1=151, n2=301, nl=25, nf=4, seed=201, lwv=0.4, lwh=0.2,
-             refl_shape='perlin', refl_shape_top='perlin', refl_smooth=3, refl_smooth_top=3,
-             refl_height=[0.0, 15.0], refl_height_top=[0.0, 4.0],
-             dip=[60.0, 120.0], disp=[5.0, 12.0], delta_dip=[0.0, 20.0],
-             noise_level=0.01, psf_sigma=[10.0, 1.0])
+# Duplex: four thrusts that share a floor (decollement) and a roof
+p = rgm.rgm2(n1=151, n2=301, nl=30, nf=0, seed=212, lwv=0.4, lwh=0.1,
+             refl_shape='random', refl_smooth=30, refl_height=[0.0, 8.0], refl_height_top=[0.0, 4.0],
+             nthrust=4, thrust_vergence='right', thrust_roof=1.0, thrust_z=[0.85, 0.9], thrust_roof_z=[0.5, 0.55],
+             yn_dip_independent=True, noise_level=0.0)
 p.generate()
 showmatrix(p.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X',
-           outfile='fault_2d_vp.png')
+           outfile='thrust_duplex_2d_vp.png')
 showmatrix(p.image, colormap='binary', cperc=99, label1='Z', label2='X',
-           outfile='fault_2d_image.png')
-showmatrix(p.fault, background=p.image, backcolormap='binary', backcperc=99, colormap='jet', alphas='0:0,0.5:1',
-           label1='Z', label2='X', outfile='fault_2d_fault.png')
+           outfile='thrust_duplex_2d_image.png')
+showmatrix(p.fault_dip, background=p.image, backcolormap='binary', backcperc=99, colormap='jet', alphas='0:0,0.5:1',
+           label1='Z', label2='X', outfile='thrust_duplex_2d_fault.png')
 
-# Faults in 3D with prescribed dip, strike and rake
-q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=5, seed=202, lwv=0.4, lwh=0.2,
-             refl_shape='perlin', refl_shape_top='perlin', refl_smooth=3, refl_smooth_top=3,
-             refl_height=[0.0, 15.0], refl_height_top=[0.0, 4.0],
-             dip=[60.0, 120.0], strike=[20.0, 60.0], rake=[0.0, 30.0], disp=[8.0, 16.0], delta_dip=[0.0, 15.0],
-             noise_level=0.01, psf_sigma=[10.0, 1.0, 1.0])
+# Pop-up: a forethrust and a backthrust that root together at depth
+p = rgm.rgm2(n1=151, n2=301, nl=30, nf=0, seed=213, lwv=0.4, lwh=0.1,
+             refl_shape='random', refl_smooth=30, refl_height=[0.0, 8.0], refl_height_top=[0.0, 4.0],
+             nthrust=2, thrust_back=1.0, thrust_tip_z=[0.25, 0.45],
+             yn_dip_independent=True, noise_level=0.0)
+p.generate()
+showmatrix(p.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X',
+           outfile='thrust_popup_2d_vp.png')
+showmatrix(p.image, colormap='binary', cperc=99, label1='Z', label2='X',
+           outfile='thrust_popup_2d_image.png')
+showmatrix(p.fault_dip, background=p.image, backcolormap='binary', backcperc=99, colormap='jet', alphas='0:0,0.5:1',
+           label1='Z', label2='X', outfile='thrust_popup_2d_fault.png')
+
+# A blind thrust whose slip dies out along strike, so that the fold above the
+# fault tip plunges out; the ramp trace is curved in map view
+q = rgm.rgm3(n1=128, n2=160, n3=160, nl=30, nf=0, seed=214, lwv=0.4, lwh=0.1,
+             refl_shape='random', refl_smooth=30, refl_height=[0.0, 8.0], refl_height_top=[0.0, 4.0],
+             nthrust=1, thrust_z=[1.1, 1.2], thrust_tip_z=[0.3, 0.4], thrust_disp=[25.0, 30.0],
+             thrust_radius=[0.35, 0.4], thrust_delta_strike=[10.0, 15.0],
+             yn_dip_independent=True, noise_level=0.0)
 q.generate()
 showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
-          outfile='fault_3d_vp.png')
+          outfile='thrust_blind_3d_vp.png')
 showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
-          outfile='fault_3d_image.png')
+          outfile='thrust_blind_3d_image.png')
 showslice(q.fault, background=q.image, backcolormap='binary', backclip=2*q.image.std(),
-          colormap='jet', alphas='0:0,0.5:1', label1='Z', label2='X', label3='Y', outfile='fault_3d_fault.png')
+          colormap='jet', alphas='0:0,0.5:1', label1='Z', label2='X', label3='Y', outfile='thrust_blind_3d_fault.png')
 
-# Faults with strike varying along the fault (curved in map view)
-q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=4, seed=203, lwv=0.4, lwh=0.2,
-             refl_shape='perlin', refl_shape_top='perlin', refl_smooth=3, refl_smooth_top=3,
-             refl_height=[0.0, 15.0], refl_height_top=[0.0, 4.0],
-             dip=[60.0, 120.0], disp=[10.0, 20.0], delta_dip=[0.0, 15.0],
-             delta_strike=[15.0, 25.0], strike_nperiod=2,
-             noise_level=0.01, psf_sigma=[10.0, 1.0, 1.0])
+# A duplex cut by two younger normal faults
+q = rgm.rgm3(n1=128, n2=160, n3=160, nl=30, nf=2, seed=215, lwv=0.4, lwh=0.1,
+             refl_shape='random', refl_smooth=30, refl_height=[0.0, 8.0], refl_height_top=[0.0, 4.0],
+             dip=[60.0, 75.0], disp=[6.0, 10.0],
+             nthrust=3, thrust_roof=1.0, thrust_z=[0.85, 0.9], thrust_roof_z=[0.5, 0.55], thrust_disp=[20.0, 25.0],
+             yn_dip_independent=True, noise_level=0.0)
 q.generate()
 showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
-          outfile='fault_strike_3d_vp.png')
+          outfile='thrust_duplex_3d_vp.png')
 showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
-          outfile='fault_strike_3d_image.png')
+          outfile='thrust_duplex_3d_image.png')
 showslice(q.fault, background=q.image, backcolormap='binary', backclip=2*q.image.std(),
-          colormap='jet', alphas='0:0,0.5:1', label1='Z', label2='X', label3='Y', outfile='fault_strike_3d_fault.png')
-
-# Faults with an elliptical slip patch: the displacement dies out toward the
-# fault tips
-q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=4, seed=204, lwv=0.4, lwh=0.2,
-             refl_shape='perlin', refl_shape_top='perlin', refl_smooth=3, refl_smooth_top=3,
-             refl_height=[0.0, 15.0], refl_height_top=[0.0, 4.0],
-             dip=[60.0, 120.0], disp=[10.0, 20.0], delta_strike=[10.0, 20.0],
-             yn_vary_disp=True, disp_radius_strike=[0.4, 0.6], disp_radius_dip=[0.5, 0.8],
-             disp_center_dip=[0.3, 0.6],
-             noise_level=0.01, psf_sigma=[10.0, 1.0, 1.0])
-q.generate()
-showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
-          outfile='fault_vary_disp_3d_vp.png')
-showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
-          outfile='fault_vary_disp_3d_image.png')
-showslice(q.fault_disp, background=q.image, backcolormap='binary', backclip=2*q.image.std(),
-          colormap='jet', alphas='0:0,0.5:1', legend=True, unit='Displacement', label1='Z', label2='X', label3='Y',
-          outfile='fault_vary_disp_3d_disp.png')
-
-# Displacement decaying away from the faults, which creates drag folds and
-# rollovers
-q = rgm.rgm3(n1=128, n2=160, n3=160, nl=25, nf=3, seed=205, lwv=0.4, lwh=0.2,
-             refl_shape='perlin', refl_shape_top='perlin', refl_smooth=3, refl_smooth_top=3,
-             refl_height=[0.0, 15.0], refl_height_top=[0.0, 4.0],
-             dip=[60.0, 120.0], disp=[12.0, 22.0], delta_strike=[10.0, 20.0],
-             yn_vary_disp=True, disp_radius_strike=[0.4, 0.6], disp_radius_dip=[0.5, 0.8],
-             yn_disp_decay=True, disp_decay_width=[0.3, 0.5],
-             noise_level=0.01, psf_sigma=[10.0, 1.0, 1.0])
-q.generate()
-showslice(q.vp, colormap='jet', legend=True, unit='Vp (m/s)', label1='Z', label2='X', label3='Y',
-          outfile='fault_decay_3d_vp.png')
-showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='X', label3='Y',
-          outfile='fault_decay_3d_image.png')
-showslice(q.fault_disp, background=q.image, backcolormap='binary', backclip=2*q.image.std(),
-          colormap='jet', alphas='0:0,0.5:1', legend=True, unit='Displacement', label1='Z', label2='X', label3='Y',
-          outfile='fault_decay_3d_disp.png')
+          colormap='jet', alphas='0:0,0.5:1', label1='Z', label2='X', label3='Y', outfile='thrust_duplex_3d_fault.png')
 
 # ==================================================================
 # Unconformities

@@ -26,6 +26,7 @@ moddir = $(PWD)/../lib
 common = \
     module_geological_model_utility.o \
     module_geological_model_realism.o \
+    module_geological_model_thrust.o \
     module_geological_model_2d.o \
     module_geological_model_3d.o \
     module_geological_model_meander.o \
@@ -33,7 +34,6 @@ common = \
     module_geological_model_karst.o \
     module_geological_model_2d_curved.o \
     module_geological_model_3d_curved.o \
-    module_geological_model_c.o \
     module_geological_model.o
 
 objlib = $(addprefix $(objdir)/, $(common))
@@ -56,17 +56,24 @@ fflags = $(base_fflags) \
 $(objdir)/%.o : $(PWD)/%.f90
 	$(fc) -o $@ -c $(fflags) $(inc) $<
 
-# link
+# link; the archive is rebuilt from scratch, so that it holds only these objects
 $(lib): $(objlib)
+	-@rm -f $@
 	$(ll) rcs $@ $^
 
-# shared library for the Python interface
+# shared library for the Python interface, which also holds the C-interoperable
+# shim; the shim is regenerated from the derived types whenever they change
 solib = $(moddir)/librgm.so
+shim = $(PWD)/module_geological_model_c.f90
 
 so: makedir $(solib)
 
-$(solib): $(objlib)
+$(solib): $(objlib) $(objdir)/module_geological_model_c.o
 	$(fc) -shared -o $@ $^ $(lflags)
+
+$(shim): $(PWD)/module_geological_model_2d_curved.f90 $(PWD)/module_geological_model_3d_curved.f90 \
+		$(PWD)/../python/shim_template.f90 $(PWD)/../python/generate_shim.py
+	python3 $(PWD)/../python/generate_shim.py
 
 # make directory
 makedir:
@@ -76,4 +83,4 @@ makedir:
 
 # clean
 clean:
-	-@rm -rf $(objdir)/*.o $(moddir)/*.mod $(lib)
+	-@rm -rf $(objdir)/*.o $(moddir)/*.mod $(lib) $(shim)

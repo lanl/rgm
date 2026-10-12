@@ -19,8 +19,8 @@
 
 !
 ! Supporting routines of the fold-train and skewed reflector shapes, the
-! dip-independent imaging, and the migration-like image noise and effects of
-! rgm2_curved and rgm3_curved
+! dip-independent imaging, the migration-like image noise and effects, and the
+! layer Vp/Vs ratios of elastic models of rgm2_curved and rgm3_curved
 !
 module geological_model_realism
 
@@ -47,6 +47,8 @@ module geological_model_realism
     public :: dip_cosine_3d
     public :: isotropic_psf_2d
     public :: isotropic_psf_3d
+    public :: phase_rotate_2d
+    public :: phase_rotate_3d
     public :: noise_band_2d
     public :: noise_band_3d
     public :: noise_worm_2d
@@ -63,6 +65,9 @@ module geological_model_realism
     public :: bump_reflector_2d
     public :: layer_dip_cosine_2d
     public :: layer_dip_cosine_3d
+    public :: layer_property_2d
+    public :: layer_property_3d
+    public :: converted_wave_stack
     public :: migration_noise_2d
     public :: migration_noise_3d
     public :: depth_blend_2d
@@ -663,6 +668,69 @@ contains
         psf = psf/norm2(psf)
 
     end function isotropic_psf_3d
+
+    !
+    !> Factor that rotates the phase of the i-th FFT coefficient of n samples by
+    !> phase degrees: cos(phase) - i sin(phase) sign(f), where -i sign(f) is the
+    !> Hilbert transform (H(cos) = sin); the zero and Nyquist frequencies have no
+    !> Hilbert part
+    !
+    pure function phase_factor(i, n, phase) result(r)
+
+        integer, intent(in) :: i, n
+        real, intent(in) :: phase
+        complex :: r
+
+        real :: sg
+
+        if (i == 1 .or. 2*(i - 1) == n) then
+            sg = 0.0
+        else
+            sg = sign(1.0, fft_freq(i, n))
+        end if
+        r = cmplx(cos(phase*const_deg2rad), -sin(phase*const_deg2rad)*sg)
+
+    end function phase_factor
+
+    !
+    !> Rotate the phase of every trace (along axis 1) of w by phase degrees:
+    !> w cos(phase) + H(w) sin(phase), with H the Hilbert transform along axis 1
+    !
+    function phase_rotate_2d(w, phase) result(wr)
+
+        real, dimension(:, :), intent(in) :: w
+        real, intent(in) :: phase
+        real, allocatable, dimension(:, :) :: wr
+
+        complex, allocatable, dimension(:, :) :: wf
+        integer :: n1, i
+
+        n1 = size(w, 1)
+        wf = fft(w)
+        do i = 1, n1
+            wf(i, :) = wf(i, :)*phase_factor(i, n1, phase)
+        end do
+        wr = ifft(wf, real=.true.)
+
+    end function phase_rotate_2d
+
+    function phase_rotate_3d(w, phase) result(wr)
+
+        real, dimension(:, :, :), intent(in) :: w
+        real, intent(in) :: phase
+        real, allocatable, dimension(:, :, :) :: wr
+
+        complex, allocatable, dimension(:, :, :) :: wf
+        integer :: n1, i
+
+        n1 = size(w, 1)
+        wf = fft(w)
+        do i = 1, n1
+            wf(i, :, :) = wf(i, :, :)*phase_factor(i, n1, phase)
+        end do
+        wr = ifft(wf, real=.true.)
+
+    end function phase_rotate_3d
 
     !
     !> Normalize to zero mean and unit standard deviation
@@ -1287,6 +1355,114 @@ contains
         end if
 
     end function layer_dip_cosine_3d
+
+    !
+    !> Property of nv = size(v) layers at an RGT value: v(l) inside layer l, and
+    !> linear across the interface of layers l and l + 1 over 2/(nd + 1) of a
+    !> layer, as the velocity model that is interpolated from nd points per layer
+    !
+    pure function layer_value(rgt, nd, v) result(r)
+
+        real, intent(in) :: rgt
+        integer, intent(in) :: nd
+        real, dimension(:), intent(in) :: v
+        real :: r
+
+        integer :: k, nv
+        real :: u, h
+
+        ! Continuous layer coordinate; l - 1 <= u <= l in layer l
+        nv = size(v)
+        u = (1.0 - rgt)*nv
+        h = 1.0/(nd + 1.0)
+
+        ! The nearest interface is between layers k and k + 1
+        k = nint(u)
+        if (k >= 1 .and. k <= nv - 1 .and. abs(u - k) < h) then
+            r = v(k) + (v(k + 1) - v(k))*(u - k + h)/(2.0*h)
+        else
+            r = v(min(max(floor(u) + 1, 1), nv))
+        end if
+
+    end function layer_value
+
+    !
+    !> Layer property model from the RGT, which follows the layers through the
+    !> folds and faults (see layer_value)
+    !
+    function layer_property_2d(rgt, nd, v) result(w)
+
+        real, dimension(:, :), intent(in) :: rgt
+        integer, intent(in) :: nd
+        real, dimension(:), intent(in) :: v
+        real, allocatable, dimension(:, :) :: w
+
+        integer :: i, j
+
+        w = zeros(size(rgt, 1), size(rgt, 2))
+
+        !$omp parallel do private(i, j) collapse(2)
+        do j = 1, size(rgt, 2)
+            do i = 1, size(rgt, 1)
+                w(i, j) = layer_value(rgt(i, j), nd, v)
+            end do
+        end do
+        !$omp end parallel do
+
+    end function layer_property_2d
+
+    function layer_property_3d(rgt, nd, v) result(w)
+
+        real, dimension(:, :, :), intent(in) :: rgt
+        integer, intent(in) :: nd
+        real, dimension(:), intent(in) :: v
+        real, allocatable, dimension(:, :, :) :: w
+
+        integer :: i, j, k
+
+        w = zeros(size(rgt, 1), size(rgt, 2), size(rgt, 3))
+
+        !$omp parallel do private(i, j, k) collapse(3)
+        do k = 1, size(rgt, 3)
+            do j = 1, size(rgt, 2)
+                do i = 1, size(rgt, 1)
+                    w(i, j, k) = layer_value(rgt(i, j, k), nd, v)
+                end do
+            end do
+        end do
+        !$omp end parallel do
+
+    end function layer_property_3d
+
+    !
+    !> PS and SP reflection coefficients stacked over the P-wave incidence angles
+    !> (degrees) in angle, at steps of at most 3 degrees; the stack leaves out the
+    !> post-critical angles, where the transmitted waves do not propagate
+    !
+    function converted_wave_stack(angle, a1, b1, rho1, a2, b2, rho2) result(r)
+
+        real, dimension(1:2), intent(in) :: angle
+        real, intent(in) :: a1, b1, rho1, a2, b2, rho2
+        real, dimension(1:2) :: r
+
+        real, allocatable, dimension(:) :: rfc
+        real :: p
+        integer :: na, nk, l
+
+        na = ceiling(abs(angle(2) - angle(1))/3.0) + 1
+        r = 0
+        nk = 0
+        do l = 1, na
+            p = sin((angle(1) + (angle(2) - angle(1))*(l - 1.0)/max(na - 1, 1))*const_deg2rad)/a1
+            if (p*max(a2, b2) < 1) then
+                rfc = elastic_reflection_coefs(p, a1, b1, rho1, a2, b2, rho2)
+                r = r + rfc(2:3)
+                nk = nk + 1
+            end if
+        end do
+        r = r/max(nk, 1)
+
+    end function converted_wave_stack
 
     !
     !> Migration-image noise with zero mean and unit standard deviation: worm,

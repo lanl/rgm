@@ -19,9 +19,9 @@
 !==============================================================================
 ! Meandering river / submarine canyon generator
 !
-! Algorithm — Howard-Knutson (1983) planform migration
+! Algorithm -- Howard-Knutson (1983) planform migration
 ! -----------------------------------------------------
-! 1. Initialise: a sine-generated centerline of ~n_bends half-wavelengths is
+! 1. Initialize: a sine-generated centerline of ~n_bends half-wavelengths is
 !    laid out; nodes are spaced uniformly at ds = W/2.
 !
 ! 2. Curvature: the signed curvature C(s) at each node is estimated from the
@@ -32,8 +32,8 @@
 !    spatial lag scale k, and is modulated by the secondary-flow coefficient
 !    omega and the ratio gamma = width / depth.
 !
-! 4. Migration: each node is displaced normal to the centreline by
-!      Δn = kl · u* · dt
+! 4. Migration: each node is displaced normal to the centerline by
+!      dn = kl * u* * dt
 !    (Howard & Knutson 1983).  Nodes near the ends of the domain are tapered
 !    to zero displacement to suppress boundary reflections.
 !
@@ -44,25 +44,25 @@
 ! 6. Resampling: after migration (and after each cutoff) the centerline is
 !    resampled to restore uniform node spacing at ds.
 !
-! 7. Steps 2–6 repeat for n_iter time steps.
+! 7. Steps 2-6 repeat for n_iter time steps.
 !
 ! 3-D channel volume (simulate_meander_3d)
 ! ----------------------------------------
 ! Boundary padding: the first/last npad = max(10, round(0.05*N0)) nodes are
-! held fixed (zero displacement) to suppress edge artefacts.  Before each
+! held fixed (zero displacement) to suppress edge artifacts.  Before each
 ! snapshot is projected, those pinned nodes are trimmed so only freely-migrating
 ! nodes reach the grid edges.
 !
-! OBB projection: the trimmed centreline is mapped to the nx×ny output grid
-! via an Oriented Bounding Box (endpoint unit vector ê).  The u-axis (along ê)
+! OBB projection: the trimmed centerline is mapped to the nx x ny output grid
+! via an Oriented Bounding Box (endpoint unit vector e).  The u-axis (along e)
 ! maps to grid columns 1..nx; the v-axis is padded by W/2 on each side and maps
 ! to rows 1..ny, keeping the channel body away from the non-start/end edges.
 !
 ! Cross-section shape (W_shape): at depth layer iz (t = (iz-1)/(nz-1)),
 ! half-width W_iz = W_bot + (W - W_bot)*f(t) with four profile options:
-!   0  power law  f = t^W_exp  (W_exp<1 → U, =1 → V, >1 → flared)
-!   1  smoothstep f = 3t²-2t³  (flat floor, steep walls, gentle shoulders)
-!   2  Gaussian CDF  f = normalised erf, steepness sigma = W_exp
+!   0  power law  f = t^W_exp  (W_exp<1 -> U, =1 -> V, >1 -> flared)
+!   1  smoothstep f = 3t^2-2t^3  (flat floor, steep walls, gentle shoulders)
+!   2  Gaussian CDF  f = normalized erf, steepness sigma = W_exp
 !   3  Gaussian bell (upside-down bell), sigma = W_exp
 ! Every snapshot accumulates into a single volume; deepest iz per (x,y) column
 ! is tracked and the body fills upward to iz = nz (composite channel sand body).
@@ -74,8 +74,8 @@
 ! that the canyon exits the grid edges naturally (padded columns are cropped
 ! from the output after rendering).
 !
-! z-assignment follows a V-trajectory: t=0 and t=1 → iz ≈ nz (surface);
-! t=0.5 → iz = 1 (maximum incision).  n_stages independently random longitudinal
+! z-assignment follows a V-trajectory: t=0 and t=1 -> iz ~ nz (surface);
+! t=0.5 -> iz = 1 (maximum incision).  n_stages independently random longitudinal
 ! offset profiles add stratigraphic roughness (amplitude dz_sigma*nz).
 ! W_eff widens linearly from W (thalweg) to W_canyon (surface), giving the
 ! characteristic erosional flare of a submarine canyon.
@@ -101,16 +101,10 @@ module geological_model_meander
     implicit none
     private
 
-    !   real(dp), parameter :: PI = acos(-1.0_dp)
-
-    !    public :: simulate
-    !    public :: simulate_meander_2d
-    !    public :: simulate_meander_3d
-    !    public :: simulate_meander_canyon_3d
-    !    public :: project_centerline_to_grid
-    !    public :: project_channel_to_grid
+    !
     !> Meandering river channel sand body.
     !> call generate() fills depth_map(nx,ny) and vol(nx,ny,nz).
+    !
     type meandering_channel
         integer  :: nx = 256, ny = 256  ! output grid dimensions (map view)
         integer  :: nz = 32             ! vertical layers (stratigraphic thickness)
@@ -120,17 +114,17 @@ module geological_model_meander
         real(dp) :: Cf = 0.011_dp       ! friction coefficient (controls u* magnitude)
         real(dp) :: k = 1.0_dp          ! upstream-weighting decay constant for u*
         real(dp) :: kl = 60.0_dp        ! lateral migration rate coefficient
-        real(dp) :: omega = -1.0_dp     ! secondary-flow weight (negative → outward bank migration)
+        real(dp) :: omega = -1.0_dp     ! secondary-flow weight (negative -> outward bank migration)
         real(dp) :: gamma = 2.5_dp      ! width-to-depth ratio W/D used in u* integral
         integer  :: n_bends = 20        ! number of initial half-wavelength bends
         real(dp) :: dt = 0.05_dp        ! dimensionless time step (fraction of W/kl)
         integer  :: n_iter = 3000       ! total migration steps
         integer  :: seed = -1           ! random seed; -1 = clock-based
-        real(dp) :: W_bot = 1.0_dp      ! channel-floor width; ≤ 0 → use W/10
+        real(dp) :: W_bot = 1.0_dp      ! channel-floor width; <= 0 -> use W/10
         real(dp) :: W_exp = 0.5_dp      ! width-vs-depth exponent (power law); sigma for Gaussian CDF
         integer  :: W_shape = 0         ! cross-section profile: 0=power law, 1=smoothstep, 2=Gaussian CDF, 3=Gaussian bell
         integer  :: nnz = 0
-        real(dp) :: terrain_bg = 0.0_dp ! if > 0, terrain (normalised to [0, terrain_bg]) fills non-channel cells in depth_map
+        real(dp) :: terrain_bg = 0.0_dp ! if > 0, terrain (normalized to [0, terrain_bg]) fills non-channel cells in depth_map
         integer  :: orient = -1         ! output orientation: -1 = derived from seed; 0-3 = fixed (0 = flow along x)
         logical  :: yn_depth_only = .false. ! if .true., skip rebuilding 3D vol/obj; only depth_map is produced
         real(dp) :: W_render = 0.0_dp   ! rendered channel width; <= 0 -> use W; allows a wide channel to be
@@ -142,8 +136,10 @@ module geological_model_meander
         procedure :: generate => generate_channel
     end type meandering_channel
 
+    !
     !> Meandering submarine canyon (stacked incision history).
     !> call generate() fills depth_map(nx,ny) and vol(nx,ny,nz).
+    !
     type meandering_canyon
         integer  :: nx = 256, ny = 256  ! output grid dimensions (map view)
         integer  :: nz = 0              ! z-levels; 0 = auto-set to n_snapshots
@@ -160,11 +156,11 @@ module geological_model_meander
         integer  :: n_iter = 3000       ! total migration steps
         integer  :: seed = -1           ! random seed; -1 = clock-based
         integer  :: save_every = 50     ! migration steps between depth-plane snapshots
-        real(dp) :: W_canyon = 1.0_dp   ! canyon aperture at surface; ≤ W → same as W
+        real(dp) :: W_canyon = 1.0_dp   ! canyon aperture at surface; <= W -> same as W
         integer  :: n_stages = 10       ! number of z-trajectory stages (controls sinuosity of incision path)
         real(dp) :: dz_sigma = 0.05_dp  ! Gaussian jitter on z-position as fraction of nz (stratigraphic roughness)
         integer  :: nnz = 0
-        real(dp) :: terrain_bg = 0.0_dp ! if > 0, terrain (normalised to [0, terrain_bg]) fills non-channel cells in depth_map
+        real(dp) :: terrain_bg = 0.0_dp ! if > 0, terrain (normalized to [0, terrain_bg]) fills non-channel cells in depth_map
         integer  :: orient = -1         ! output orientation: -1 = derived from seed; 0-3 = fixed (0 = flow along x)
         logical  :: yn_depth_only = .false. ! if .true., skip rebuilding 3D vol/obj; only depth_map is produced
         real(sp), allocatable, dimension(:, :) :: depth_map
@@ -179,10 +175,12 @@ module geological_model_meander
 
 contains
 
-    ! ── numerical utilities ─────────────────────────────────────────────────────
+    ! ------ Numerical utilities -----------------------------------------------
 
+    !
     !> Central-difference gradient with unit spacing (same as np.gradient for 1D).
     !> da(1) = a(2)-a(1),  da(i) = 0.5*(a(i+1)-a(i-1)),  da(n) = a(n)-a(n-1)
+    !
     subroutine grad1d(a, da)
         real(dp), intent(in)  :: a(:)
         real(dp), intent(out) :: da(:)
@@ -199,8 +197,10 @@ contains
         da(n) = a(n) - a(n - 1)
     end subroutine grad1d
 
+    !
     !> Causal single-pole IIR filter matching scipy.signal.lfilter([1-d],[1,-d],x).
     !> y(1) = (1-d)*x(1),   y(i) = (1-d)*x(i) + d*y(i-1)
+    !
     subroutine iir_causal(x, d, y)
         real(dp), intent(in)  :: x(:), d
         real(dp), intent(out) :: y(:)
@@ -211,10 +211,12 @@ contains
         end do
     end subroutine iir_causal
 
-    ! ── arc-length resampling ────────────────────────────────────────────────────
+    ! ------ Arc-length resampling ---------------------------------------------
 
+    !
     !> Resample (x,y) to uniform arc-length spacing deltas using cubic splines.
     !> x and y are reallocated in place.
+    !
     subroutine resample_chan(x, y, deltas)
         real(dp), allocatable, intent(inout) :: x(:), y(:)
         real(dp), intent(in) :: deltas
@@ -225,7 +227,7 @@ contains
         n = size(x)
         allocate (s(n))
 
-        ! cumulative arc length
+        ! Cumulative arc length
         s(1) = 0.0_dp
         do i = 2, n
             s(i) = s(i - 1) + hypot(x(i) - x(i - 1), y(i) - y(i - 1))
@@ -235,7 +237,7 @@ contains
             return
         end if
 
-        ! remove consecutive duplicate arc-length values (zero-length steps)
+        ! Remove consecutive duplicate arc-length values (zero-length steps)
         allocate (sd(n), xd(n), yd(n))
         nd = 1
         sd(1) = s(1)
@@ -254,21 +256,23 @@ contains
             return
         end if
 
-        ! uniform query locations
+        ! Uniform query locations
         n_new = max(4, nint(s(n)/deltas) + 1)
         s_new = linspace(0.0_dp, s(n), n_new)
 
-        ! cubic spline interpolation via flit
+        ! Cubic spline interpolation via FLIT
         deallocate (x, y)
         x = ginterp(sd(1:nd), xd(1:nd), s_new, method='cubic')
         y = ginterp(sd(1:nd), yd(1:nd), s_new, method='cubic')
 
     end subroutine resample_chan
 
-    ! ── cutoff detection ─────────────────────────────────────────────────────────
+    ! ------ Cutoff detection --------------------------------------------------
 
+    !
     !> Detect and remove neck cutoffs.  Scan upstream-to-downstream for the first
     !> pair of non-adjacent nodes closer than crdist; excise the loop; repeat.
+    !
     subroutine cut_off_cutoffs(x, y, crdist, deltas, n_ox)
         real(dp), allocatable, intent(inout) :: x(:), y(:)
         real(dp), intent(in)  :: crdist, deltas
@@ -285,7 +289,7 @@ contains
             n = size(x)
             if (n < 2*diag_blank + 4) exit
 
-            ! scan for upstream-most cutoff pair (Python: argmin(minimum(i,j)) = min i)
+            ! Scan for upstream-most cutoff pair
             found = .false.
             outer: do i = 1, n - diag_blank
                 do j = i + diag_blank, n
@@ -303,7 +307,7 @@ contains
             end if
 
             n_ox = n_ox + 1
-            ! excise loop [i1+1 .. j1-1]: keep x(1:i1) and x(j1:n)
+            ! Excise loop [i1+1 .. j1-1]: keep x(1:i1) and x(j1:n)
             n_new = i1 + (n - j1 + 1)
             allocate (xt(n_new), yt(n_new))
             xt(1:i1) = x(1:i1)
@@ -317,15 +321,17 @@ contains
 
     end subroutine cut_off_cutoffs
 
-    ! ── public simulate ──────────────────────────────────────────────────────────
+    ! ------ Public simulate ---------------------------------------------------
 
+    !
     !> Simulate meandering channel migration (Howard-Knutson 1983 / meanderpy).
-    !!
-    !! Parameters match meander2d.py::simulate() exactly.
-    !!   kl   : lateral migration coefficient (primary knob for curve size)
-    !!   dt   : time step — use 1.0–2.0 for well-developed meanders
-    !!
-    !! On return x_out/y_out hold the final centreline node coordinates.
+    !>
+    !> Parameters match meander2d.py::simulate() exactly.
+    !>   kl   : lateral migration coefficient (primary knob for curve size)
+    !>   dt   : time step -- use 1.0-2.0 for well-developed meanders
+    !>
+    !> On return x_out/y_out hold the final centerline node coordinates.
+    !
     subroutine simulate_meander_2d(length, W, D, Cf, k, kl, omega, gamma, &
             n_bends, dt, n_iter, crdist, seed, &
             x_out, y_out, n_oxbows_out, pad_out)
@@ -336,7 +342,7 @@ contains
         real(dp), allocatable, intent(out) :: x_out(:), y_out(:)
         integer, intent(out), optional   :: n_oxbows_out, pad_out
 
-        ! working arrays
+        ! Working arrays
         real(dp), allocatable :: x(:), y(:), raw(:), rd(:)
         real(dp), allocatable :: dx(:), dy(:), ddx(:), ddy(:)
         real(dp), allocatable :: den(:), curv(:), R0(:), Omg(:), R1(:)
@@ -347,7 +353,7 @@ contains
         real(dp) :: kap, th, pos, slope_val, rms_val, arc, chord
         integer  :: n0, n, it, j, npad, n_ox, n_ox_total
 
-        ! ── setup ─────────────────────────────────────────────────────────────────
+        ! ------ Setup ---------------------------------------------------------
         if (present(crdist)) then
             crdist_val = crdist
         else
@@ -358,9 +364,7 @@ contains
         alpha = k*2.0_dp*Cf/D
         decay = exp(-alpha*deltas)
 
-        ! call init_rng(seed)
-
-        ! ── OU random initial centreline ──────────────────────────────────────────
+        ! ------ OU random initial centerline ----------------------------------
         n0 = max(12, nint(length/deltas) + 1)
         npad = max(10, nint(n0*0.05_dp))   ! ~5 % of nodes, min 10
         phi_k = exp(-deltas/(length/max(1, n_bends)*0.4_dp))
@@ -378,7 +382,7 @@ contains
             raw(j) = pos
         end do
 
-        ! detrend and normalise RMS to 2W
+        ! Detrend and normalize RMS to 2W
         slope_val = (raw(n0) - raw(1))/real(n0 - 1, dp)
         do j = 1, n0
             raw(j) = raw(j) - slope_val*real(j - 1, dp)
@@ -399,14 +403,14 @@ contains
 
         n_ox_total = 0
 
-        ! ── main migration loop ────────────────────────────────────────────────────
+        ! ------ Main migration loop -------------------------------------------
         do it = 1, n_iter
             n = size(x)
             if (n < 2*npad + 4) then
                 exit
             end if
 
-            ! curvature  κ = (x'y'' - y'x'') / (x'^2 + y'^2)^(3/2)
+            ! Curvature  kappa = (x'y'' - y'x'') / (x'^2 + y'^2)^(3/2)
             allocate (dx(n), dy(n), ddx(n), ddy(n), den(n), curv(n))
             call grad1d(x, dx)
             call grad1d(y, dy)
@@ -419,21 +423,21 @@ contains
                 curv = 0.0_dp
             end where
 
-            ! migration rate  R1 = omega*R0 + gamma*Omega
+            ! Migration rate  R1 = omega*R0 + gamma*Omega
             ! Omega = lfilter([1-decay],[1,-decay], R0)  (causal IIR, O(n))
             allocate (R0(n), Omg(n), R1(n))
             R0 = kl*W*curv
             call iir_causal(R0, decay, Omg)
             R1 = omega*R0 + gamma*Omg
 
-            ! sinuosity correction: slow migration as channel becomes more sinuous
+            ! Sinuosity correction: slow migration as channel becomes more sinuous
             allocate (ds(n))
             ds = hypot(dx, dy)
             arc = sum(ds)
             chord = max(hypot(x(n) - x(1), y(n) - y(1)), 1.0e-10_dp)
             R1 = R1*(chord/arc)**(2.0_dp/3.0_dp)
 
-            ! displacement along right normal (ty, -tx)
+            ! Displacement along right normal (ty, -tx)
             ds = max(ds, 1.0e-12_dp)
             allocate (tx(n), ty(n))
             tx = dx/ds
@@ -457,7 +461,7 @@ contains
 
             deallocate (dx, dy, ddx, ddy, den, curv, R0, Omg, R1, ds, tx, ty, dpx, dpy, mag, sc)
 
-            ! resample + cutoff detection
+            ! Resample + cutoff detection
             call resample_chan(x, y, deltas)
             call cut_off_cutoffs(x, y, crdist_val, deltas, n_ox)
             n_ox_total = n_ox_total + n_ox
@@ -475,11 +479,13 @@ contains
 
     end subroutine
 
-    ! ── grid projection ──────────────────────────────────────────────────────────
+    ! ------ Grid projection ---------------------------------------------------
 
-    !> Rasterize centreline segments as a thin (1-cell-wide) line.
+    !
+    !> Rasterize centerline segments as a thin (1-cell-wide) line.
     !> Matches Python project_centerline_to_grid.
-    !> grid(nx,ny): 1.0=centreline, 0.0=background.
+    !> grid(nx,ny): 1.0=centerline, 0.0=background.
+    !
     subroutine project_centerline_to_grid(x, y, nx, ny, grid, &
             xmin_opt, xmax_opt, ymin_opt, ymax_opt)
         real(dp), intent(in)  :: x(:), y(:)
@@ -524,7 +530,9 @@ contains
         end do
     end subroutine project_centerline_to_grid
 
+    !
     !> Walk one segment with Bresenham and mark intersected grid cells.
+    !
     subroutine bresenham_seg(gx0, gy0, gx1, gy1, nx, ny, grid)
         real(dp), intent(in)    :: gx0, gy0, gx1, gy1
         integer, intent(in)    :: nx, ny
@@ -568,9 +576,11 @@ contains
         end do
     end subroutine bresenham_seg
 
+    !
     !> Project channel (with width W) to grid using distance-to-segment.
     !> Matches Python project_channel_to_grid.
     !> grid(nx,ny): 1.0=channel, 0.0=background.
+    !
     subroutine project_channel_to_grid(x, y, W, nx, ny, grid, &
             xmin_opt, xmax_opt, ymin_opt, ymax_opt)
         real(dp), intent(in)  :: x(:), y(:), W
@@ -620,7 +630,9 @@ contains
         end do
     end subroutine project_channel_to_grid
 
+    !
     !> Minimum distance from point (px,py) to segment (ax,ay)-(bx,by).
+    !
     pure function seg_dist(px, py, ax, ay, bx, by) result(d)
         real(dp), intent(in) :: px, py, ax, ay, bx, by
         real(dp) :: d, t, ex, ey, len2
@@ -635,9 +647,10 @@ contains
         end if
     end function seg_dist
 
-    ! ── 3-D channel volume ───────────────────────────────────────────────────────
+    ! ------ 3-D channel volume ------------------------------------------------
 
-    !> Simulate one centreline and project it to a 3-D grid where channel width
+    !
+    !> Simulate one centerline and project it to a 3-D grid where channel width
     !> increases from W_bot (bottom, iz=1) to W (top, iz=nz) via a power law:
     !>   W_iz = W_bot + (W - W_bot) * t**W_exp,   t = (iz-1)/(nz-1)
     !> W_exp < 1 (default 0.5 = sqrt) gives a rounded U-shape;
@@ -646,6 +659,7 @@ contains
     !> vol(nx_g, ny_g, nz_g): 1.0 = channel, 0.0 = background.
     !> Fortran storage: x fastest, z slowest (column-major).
     !> When read in Python as order='F', reshape to (nz_g, ny_g, nx_g).
+    !
     subroutine simulate_meander_3d(length, W, D, Cf, k, kl, omega, gamma, &
             n_bends, dt, n_iter, seed, &
             nx_g, ny_g, nz_g, vol, &
@@ -716,7 +730,7 @@ contains
             gauss_hi = erf(0.5_dp/(max(1.0e-6_dp, W_exponent)*sqrt(2.0_dp)))
             gauss_denom = max(1.0e-10_dp, gauss_hi - gauss_lo)
         else if (W_shape_val == 3) then
-            ! gauss_lo repurposed as exp(-1/sigma²) for the bell cross-section
+            ! gauss_lo repurposed as exp(-1/sigma^2) for the bell cross-section
             gauss_lo = exp(-1.0_dp/max(1.0e-6_dp, W_exponent)**2)
         end if
 
@@ -761,8 +775,9 @@ contains
 
     end subroutine
 
-    ! ── submarine canyon volume ──────────────────────────────────────────────────
+    ! ------ Submarine canyon volume -------------------------------------------
 
+    !
     !> Simulate meander migration while saving channel snapshots at every
     !> save_every iterations.  Each snapshot is assigned a depth level that
     !> follows a V-shaped incision-then-aggradation trajectory:
@@ -773,6 +788,7 @@ contains
     !> mid-simulation snapshot (maximum meander development) lands at iz = 1
     !> (deepest incision).  The union of all painted capsules gives a canyon body
     !> that is narrow at depth and widens upward.
+    !
     subroutine simulate_meander_canyon_3d(length, W, D, Cf, k, kl, omega, gamma, &
             n_bends, dt, n_iter, seed, &
             nx_g, ny_g, nz_g, vol, &
@@ -818,7 +834,7 @@ contains
         if (present(save_every)) save_every_val = max(1, save_every)
         n_snap_max = n_iter/save_every_val + 4
 
-        ! ── identical setup as simulate ───────────────────────────────────────────
+        ! ------ Identical setup as simulate -----------------------------------
         crdist_val = 1.5_dp*W
         deltas = W/2.0_dp
         alpha = k*2.0_dp*Cf/D
@@ -860,7 +876,7 @@ contains
         allocate (snaps(n_snap_max))
         i_snap = 0
 
-        ! save initial snapshot (t=0, will be placed at seabed surface)
+        ! Save initial snapshot (t=0, will be placed at seabed surface)
         nn = size(x)
         if (nn > 2*npad + 1) then
             i_snap = i_snap + 1
@@ -868,7 +884,7 @@ contains
             snaps(i_snap)%y = y(npad + 1:nn - npad)
         end if
 
-        ! ── main migration loop with snapshot saving ───────────────────────────────
+        ! ------ Main migration loop with snapshot saving ----------------------
         do it = 1, n_iter
             n = size(x)
             if (n < 2*npad + 4) exit
@@ -932,7 +948,7 @@ contains
             end if
         end do
 
-        ! also save the final state
+        ! Also save the final state
         nn = size(x)
         if (nn > 2*npad + 1 .and. i_snap < n_snap_max) then
             i_snap = i_snap + 1
@@ -946,7 +962,7 @@ contains
             return
         end if
 
-        ! ── grid bounds ───────────────────────────────────────────────────────────
+        ! ------ Grid bounds ---------------------------------------------------
         xmin = huge(xmin)
         xmax = -huge(xmax)
         ymin = huge(ymin)
@@ -963,7 +979,7 @@ contains
         ddx_g = (xmax - xmin)/nx_g
         ddy_g = (ymax - ymin)/ny_g
 
-        ! canyon surface width; when omitted the width stays W at all depths and
+        ! Canyon surface width; when omitted the width stays W at all depths and
         ! natural meander migration widens the canyon cross-section via cumulative fill
         if (present(W_canyon)) then
             W_canyon_val = max(W, W_canyon)
@@ -980,7 +996,7 @@ contains
             nz_actual = nz_g
         end if
 
-        ! ── staged longitudinal z-profiles ───────────────────────────────────────
+        ! ------ Staged longitudinal z-profiles --------------------------------
         ! Each stage covers a contiguous block of snapshots.  Within a stage every
         ! segment of the channel has the same mean iz (from the V-trajectory) PLUS
         ! a smooth random offset that varies along the channel arc.  The offset is
@@ -1002,9 +1018,9 @@ contains
         allocate (vol(nx_g, ny_g, nz_actual))
         vol = 0.0_sp
 
-        ! ── erosional cumulative fill with per-segment iz ─────────────────────────
-        ! V-trajectory: t=0 → iz_mean=nz_actual (surface), t=0.5 → iz_mean=1
-        ! (maximum incision / most sinuous), t=1 → iz_mean=nz_actual (surface).
+        ! ------ Erosional cumulative fill with per-segment iz -----------------
+        ! V-trajectory: t=0 -> iz_mean=nz_actual (surface), t=0.5 -> iz_mean=1
+        ! (maximum incision / most sinuous), t=1 -> iz_mean=nz_actual (surface).
         ! Stage profiles add a smooth random dz along the channel arc, cross-faded
         ! between adjacent stages.  min_iz_map records the deepest iz any segment
         ! carved each XY cell; vol fills upward from there to nz_actual.
@@ -1077,12 +1093,14 @@ contains
 
     end subroutine
 
-    ! ── OOP generate functions ───────────────────────────────────────────────────
+    ! ------ OOP generate functions --------------------------------------------
 
+    !
     !> Generate a 2-D depth map from a 3-D meandering channel volume.
     !> Produces depth_map(ny,nx), downward-positive: 0 = highest topography.
-    !> Depth is measured from the channel bottom: centre cells score ~1.0,
+    !> Depth is measured from the channel bottom: center cells score ~1.0,
     !> bank-edge cells score a small positive fraction.
+    !
     subroutine generate_channel(self)
 
         class(meandering_channel), intent(inout) :: self
@@ -1099,7 +1117,7 @@ contains
             ori = mod(abs(eff_seed), 4)
         end if
 
-        ! For 90° rotations: pre-swap nx↔ny so the whole pipeline runs in the
+        ! For 90-degree rotations: pre-swap nx<->ny so the whole pipeline runs in the
         ! transposed frame; swapped back after the vol rebuild so output stays (ny,nx).
         select case (ori)
             case (2, 3)
@@ -1158,13 +1176,12 @@ contains
                 [0.1, 0.1]*0.5*(self%nx + self%ny)), [0.0, 1.0])
             dem_bg = real(transpose(dem_bg)*self%terrain_bg, sp)
             ! Background cells get terrain value [0, terrain_bg].
-            ! Channel cells get terrain − channel_depth (negative = incised below surface).
+            ! Channel cells get terrain - channel_depth (negative = incised below surface).
             where (self%depth_map == 0.0_sp)
                 self%depth_map = dem_bg
             elsewhere
                 ! Here, different from drainage, use the original depth map for channel pixels
                 ! This will result in mesa-like topography
-                ! self%depth_map = dem_bg - self%depth_map
                 self%depth_map = -self%depth_map
             end where
         else
@@ -1198,7 +1215,7 @@ contains
             !$omp end parallel do
         end if
 
-        ! Rotate output to final orientation; for cases 2/3 also swap nx↔ny back.
+        ! Rotate output to final orientation; for cases 2/3 also swap nx<->ny back.
         select case (ori)
             case (1)
                 self%depth_map = flip(self%depth_map, [2])
@@ -1230,9 +1247,11 @@ contains
 
     end subroutine
 
+    !
     !> Generate a 2-D depth map from a 3-D meander canyon volume.
     !> Produces depth_map(ny,nx), downward-positive: 0 = highest topography.
     !> Depth encodes how deep the canyon floor was carved at each (x,y) cell.
+    !
     subroutine generate_canyon(self)
 
         class(meandering_canyon), intent(inout) :: self
@@ -1249,7 +1268,7 @@ contains
             ori = mod(abs(eff_seed), 4)
         end if
 
-        ! For 90° rotations: pre-swap nx↔ny so the whole pipeline runs in the
+        ! For 90-degree rotations: pre-swap nx<->ny so the whole pipeline runs in the
         ! transposed frame; swapped back after the vol rebuild so output stays (ny,nx).
         select case (ori)
             case (2, 3)
@@ -1315,11 +1334,10 @@ contains
                 [0.1, 0.1]*0.5*(self%nx + self%ny)), [0.0, 1.0])
             dem_bg = real(transpose(dem_bg)*self%terrain_bg, sp)
             ! Background cells get terrain value [0, terrain_bg].
-            ! Channel cells get terrain − channel_depth (negative = incised below surface).
+            ! Channel cells get terrain - channel_depth (negative = incised below surface).
             where (self%depth_map == 0.0_sp)
                 self%depth_map = dem_bg
             elsewhere
-                ! self%depth_map = dem_bg - self%depth_map
                 self%depth_map = -self%depth_map
             end where
         else
@@ -1353,7 +1371,7 @@ contains
             !$omp end parallel do
         end if
 
-        ! Rotate output to final orientation; for cases 2/3 also swap nx↔ny back.
+        ! Rotate output to final orientation; for cases 2/3 also swap nx<->ny back.
         select case (ori)
             case (1)
                 self%depth_map = flip(self%depth_map, [2])

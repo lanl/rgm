@@ -2,7 +2,9 @@
 """
 Generate the iso_c_binding shim module (src/module_geological_model_c.f90)
 by parsing the parameter components of the rgm2_curved and rgm3_curved
-derived types. Rerun this script after adding/removing type parameters:
+derived types. The shim is not part of the repository: make so in src runs
+this script when the shim is missing or the types change. It can also be run
+by hand:
 
     python3 python/generate_shim.py
 

@@ -52,6 +52,66 @@ program test
 
     end block
 
+    stop
+
+    ! ==================================================================
+    ! Thrust faults: an imbricate fan, a duplex and a pop-up; the images are
+    ! dip-independent, so that the steep fold limbs stay visible
+
+    block
+
+        type(rgm2_curved) :: p
+
+        ! Imbricate fan: three thrusts in a piggyback sequence, with
+        ! fault-propagation folds above the fault tips
+        p%n1 = 151
+        p%n2 = 301
+        p%nl = 30
+        p%nf = 0
+        p%lwv = 0.4
+        p%lwh = 0.1
+        p%refl_shape = 'random'
+        p%refl_smooth = 30
+        p%refl_height = [0.0, 8.0]
+        p%refl_height_top = [0.0, 4.0]
+        p%yn_dip_independent = .true.
+        p%noise_level = 0.0
+        p%nthrust = 3
+        p%thrust_vergence = 'right'
+        p%thrust_z = [1.1, 1.2]
+        p%thrust_tip_z = [0.1, 0.5]
+        p%seed = 251
+        call p%generate
+        call output_array(p%vp, './example_2d_vp_thrust_imbricate.bin')
+        call output_array(p%image, './example_2d_image_thrust_imbricate.bin')
+        call output_array(p%fault, './example_2d_fault_thrust_imbricate.bin')
+
+        ! Duplex: four thrusts that share a floor (decollement) and a roof
+        p%nthrust = 4
+        p%thrust_roof = 1.0
+        p%thrust_z = [0.85, 0.9]
+        p%thrust_roof_z = [0.5, 0.55]
+        p%seed = 212
+        call p%generate
+        call output_array(p%vp, './example_2d_vp_thrust_duplex.bin')
+        call output_array(p%image, './example_2d_image_thrust_duplex.bin')
+        call output_array(p%fault, './example_2d_fault_thrust_duplex.bin')
+
+        ! Pop-up: a forethrust and a backthrust that root together at depth
+        p%nthrust = 2
+        p%thrust_roof = 0.0
+        p%thrust_back = 1.0
+        p%thrust_vergence = 'random'
+        p%thrust_z = [0.85, 1.1]
+        p%thrust_tip_z = [0.25, 0.45]
+        p%seed = 213
+        call p%generate
+        call output_array(p%vp, './example_2d_vp_thrust_popup.bin')
+        call output_array(p%image, './example_2d_image_thrust_popup.bin')
+        call output_array(p%fault, './example_2d_fault_thrust_popup.bin')
+
+    end block
+
     ! ==================================================================
     ! Types of unconformities
 

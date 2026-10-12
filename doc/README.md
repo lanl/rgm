@@ -241,6 +241,92 @@ For `refl_shape = 'gaussian'` or `'cauchy'`, the bumps can be asymmetric:
 <!-- 
 logical :: yn_group_faults = .false. -->
 
+### Thrust faults
+
+Thrust faults are low-angle reverse faults with ramps and flats, together with the folds that they create. With one or several thrusts, `rgm2_curved` and `rgm3_curved` generate fault-bend folds, fault-propagation folds, imbricate fans, duplexes, and pop-ups. The thrusts are older than the faults set by `nf`: they deform the layers first, and the faults then cut them. In a model with unconformities, only the unit below the deepest unconformity has thrusts.
+
+Each thrust has a lower flat (decollement), a ramp, and optionally an upper flat (roof). The decollement follows a horizon of the layered model. The ramp cuts up-section at the ramp dip. The roof follows another horizon. The bends between the flats and the ramp are rounded. All thrusts of a model share the decollement, and the roof when there is one. Behind the fault tip, the hanging wall moves along the fault. The fold hinges in the hanging wall lie on the bisectors of the fault bends, which keeps the bed thickness, and they widen away from the fault. Ahead of the fault tip, the layers fold in a triangular shear zone (trishear) while the tip propagates. This gives a fault-propagation fold above a blind thrust. In 3D, the thrusts share a transport azimuth, and the backthrusts move opposite to it. The ramp traces can curve in map view, and the slip can decrease to zero along strike, so that the folds plunge out.
+
+The fault labels mark a thrust where its stratigraphic offset is at least 0.5 grid points. These are the ramps and the hanging-wall cutoffs on the flats. A hanging-wall flat that slides on a footwall flat shows no offset and is not marked. The labels have the width `fwidth` along the whole fault, also where a younger thrust folds an older one. The thrusts are numbered after the faults, i.e., `nf + 1`, `nf + 2`, ..., and `fault_disp` stores the slip. In 3D, `fault_strike` and `fault_dip` follow the convention of the faults, and `fault_rake` is 90 degrees. A thrust places older layers above younger layers. The RGT therefore decreases across a thrust along a vertical trace (a repeated section). The RGT is computed internally even when `yn_rgt` is `.false.`.
+
+The structure types follow from a few parameters, for instance:
+
+| Structure | Parameters |
+| --- | --- |
+| Fault-propagation fold | `nthrust = 1`, `thrust_tip_z = [0.3, 0.5]` |
+| Fault-bend fold | `nthrust = 1`, `thrust_roof = 1.0` |
+| Imbricate fan | `nthrust = 3` |
+| Duplex | `nthrust = 4`, `thrust_roof = 1.0`, `thrust_roof_z = [0.5, 0.55]`, `thrust_z = [0.85, 0.9]` |
+| Pop-up | `nthrust = 2`, `thrust_back = 1.0` |
+
+> **`nthrust` (integer); for `rgm2_curved` and `rgm3_curved`**
+- **Description**: Number of thrust faults. When `0`, no thrust is inserted, and the models are identical to those generated without the thrust options.
+- **Default**: `0`
+
+> **`thrust_dip` (real, dimension(1:2))**
+- **Description**: Range of the ramp dip (degrees).
+- **Default**: `[20.0, 35.0]`
+
+> **`thrust_disp` (real, dimension(1:2))**
+- **Description**: Range of the slip along the fault (grid points). When `[0, 0]`, the range is `[0.05, 0.15]` of the model size along the transport direction.
+- **Default**: `[0.0, 0.0]`
+
+> **`thrust_z` (real, dimension(1:2))**
+- **Description**: Range of the depth of the decollement, relative to `n1`. The decollement follows the horizon that passes through this depth at the model center. A value above `1` puts the decollement below the model, so that only the ramps are visible.
+- **Default**: `[0.85, 1.1]`
+
+> **`thrust_tip_z` (real, dimension(1:2))**
+- **Description**: Range of the final depth of the fault tip, relative to `n1`, for thrusts without a roof. A positive value gives a blind thrust with a fault-propagation fold above the tip. A negative value puts the tip above the model, so that the thrust cuts through the entire model.
+- **Default**: `[-0.2, 0.5]`
+
+> **`thrust_bend` (real, dimension(1:2))**
+- **Description**: Range of the arc length (grid points) over which the fault bends from a flat to the ramp and from the ramp to a flat. Small values give kink-like fold hinges, and large values give rounded hinges. When `[0, 0]`, the range is `[0.15, 0.3]*n1`.
+- **Default**: `[0.0, 0.0]`
+
+> **`thrust_widen` (real, dimension(1:2))**
+- **Description**: Range of the growth of the fold hinge width with the distance from the fault. The hanging wall at a distance `d` from the fault moves along the fault shape smoothed by a Gaussian with a standard deviation of `thrust_widen*d`. The hinges therefore widen upward, while the ramps, the flats, and the fold amplitude are kept. With `[0, 0]`, the hinges are as sharp as the fault bends at any distance from the fault.
+- **Default**: `[0.2, 0.4]`
+
+> **`thrust_ps` (real, dimension(1:2))**
+- **Description**: Range of the ratio of the tip propagation to the slip (P/S) of a thrust with a tip. The tip starts below its final position, by P/S times the slip along the fault, and not deeper than the ramp foot.
+- **Default**: `[1.5, 3.0]`
+
+> **`thrust_trishear` (real, dimension(1:2))**
+- **Description**: Range of the apical angle (degrees) of the trishear zone ahead of the fault tip. A larger angle spreads the folding over a wider zone.
+- **Default**: `[40.0, 100.0]`
+
+> **`thrust_roof` (real)**
+- **Description**: Probability that the thrusts of a model have a roof, i.e., an upper flat that follows a horizon and is shared by all the thrusts. With a roof, one thrust makes a fault-bend fold, and several thrusts make a duplex. The fault tips are then beyond the model.
+- **Default**: `0.0`
+
+> **`thrust_roof_z` (real, dimension(1:2))**
+- **Description**: Range of the depth of the roof, relative to `n1`. The roof follows the horizon that passes through this depth at the model center.
+- **Default**: `[0.3, 0.6]`
+
+> **`thrust_back` (real)**
+- **Description**: Probability that a thrust after the first one is a backthrust, which moves opposite to the other thrusts. A backthrust rises from the ramp of the preceding thrust at depth, so that the block between them pops up.
+- **Default**: `0.0`
+
+> **`thrust_sequence` (character(len=12))**
+- **Description**: Order in which the thrusts move: `'forward'` (piggyback: each thrust forms in front of the older thrusts and carries them), `'backward'` (break-back), or `'random'`.
+- **Default**: `'forward'`
+
+> **`thrust_vergence` (character(len=12)); only for `rgm2_curved`**
+- **Description**: Transport direction of the thrusts: `'right'` (toward +x2), `'left'`, or `'random'`.
+- **Default**: `'random'`
+
+> **`thrust_azimuth` (real, dimension(1:2)); only for `rgm3_curved`**
+- **Description**: Range of the transport azimuth of the thrusts (degrees, from x2 toward x3).
+- **Default**: `[0.0, 360.0]`
+
+> **`thrust_delta_strike` (real, dimension(1:2)); only for `rgm3_curved`**
+- **Description**: Range of the maximum strike deviation (degrees) along the ramp traces. When not `[0, 0]`, the ramp traces are smooth curves in map view.
+- **Default**: `[0.0, 0.0]`
+
+> **`thrust_radius` (real, dimension(1:2)); only for `rgm3_curved`**
+- **Description**: Range of the half length of the slip patch along strike, relative to `0.5*(n2 + n3)`. The slip decreases smoothly from the patch center to zero at the patch ends, so that the folds plunge out and the fault tip descends toward the ends. When `[0, 0]`, the slip is constant along strike.
+- **Default**: `[0.0, 0.0]`
+
 ### Unconformity
 
 > **`unconf` (integer)** 
@@ -304,18 +390,18 @@ character(len=12) :: unconf_refl_shape = 'random' -->
 - **Description**: Salt radius relative to the size of the model. Larger values results in broader salt bodies. 
 - **Default**: `[0.05*0.5*(n2 + n3), 0.2*0.5*(n2 + n3)]`
 
+> **`salt_vp`, `salt_vs`, `salt_rho` (real)** 
+- **Description**: Medium properties of the salt bodies; `salt_vs` applies to elastic models only. Halite has a Vp/Vs ratio of about 1.75. 
+- **Default**: `5000.0`, `2850.0`, `2150.0`
+
 <!-- !==============================================================================================
 real :: salt_radius_variation = 0.7
 real :: salt_path_variation = 5.0
 integer :: salt_nnode = 10
 real, dimension(1:2) :: salt_top_z = [0.5, 0.8]
-real :: salt_vp = 5000.0
-real :: salt_rho = 2150.0
 real, allocatable, dimension(:, :, :) :: salt
 real :: salt_top_height = 20.0 -->
-<!-- !> Salt body's Vs
-real :: salt_vs = 4400.0
-!> Is salt before or after unconformity?
+<!-- !> Is salt before or after unconformity?
 logical :: salt_before_unconf = .true. -->
 
 ### Karst (RGM v2.0)
@@ -374,9 +460,15 @@ and elastic models.
 - **Description**: Generate elastic or just acoustic model. When this option is `.true.`, the generated models will contain not only `vp`, but also `vs`, `rho`, and the image arrays will contain `image_pp`, `image_ps`, `image_sp`, and `image_ss`. 
 - **Default**: `.false.`
 
+> **`vpvsratio` (real, dimension(1:2))** 
+- **Description**: Range of the Vp/Vs ratios. Each layer draws its own ratio uniformly from this range, and `vs = vp/ratio`. The ratio follows the layer through folds, faults, thrust faults, and unconformities. Because the ratio varies independently of `vp`, the PS, SP, and SS images contain information that the PP image does not. Salt and karst use `salt_vs` and `karst_vs`. 
+- **Default**: `[1.5, 1.8]`
+
+> **`angle_ps` (real, dimension(1:2))** 
+- **Description**: Range of the P-wave incidence angles (degrees) stacked in the PS image. PS vanishes at normal incidence, so its stack needs wider angles than the PP and SS images, which use the ray parameters of P-wave incidence angles from 0° to 15°. The SP image uses the same ray parameters as PS. The stack leaves out the angles beyond the critical angle of each interface. 
+- **Default**: `[10.0, 40.0]`
+
 <!-- !==============================================================================================
-!> Vp/Vs ratios
-real, dimension(1:2) :: vpvsratio = [1.5, 1.8]
 !> Elastic models
 real, allocatable, dimension(:, :, :) :: vp, vs, rho
 real :: rho_a = 310.0, rho_b = 0.25, rho_c = 0.0
@@ -387,7 +479,7 @@ real, allocatable, dimension(:, :, :) :: image_pp, image_ps, image_sp, image_ss-
 ### RGT
 
 > **`yn_rgt` (logical)** 
-- **Description**: Generate RGT volume. 
+- **Description**: Generate RGT volume. With thrust faults, the RGT decreases across a thrust along a vertical trace, because the thrust places older layers above younger layers.
 - **Default**: `.false.`
 
 <!-- 
@@ -439,14 +531,18 @@ real :: delta_v = 500.0
 
 ### Image
 
-By default, the image is the vertical reflectivity convolved with a separable point spread function (PSF): a vertical wavelet multiplied by lateral Gaussians (`psf_sigma`). With this PSF, steeply dipping reflectors fade; with the default parameters, a reflector keeps about 38% of its amplitude at a dip of 30 degrees and 6% at 60 degrees, so steep fold limbs can look like faults. The following options make the image dip-independent and give it the character of migrated images. All of them are off by default, and the default images are unchanged. With or without them, the PSF is centered on the sample that the convolution aligns with the input, so the image is aligned with the model and the labels for both even and odd model sizes.
+By default, the image is the vertical reflectivity convolved with a separable point spread function (PSF): a vertical wavelet multiplied by lateral Gaussians (`psf_sigma`). This PSF mimics field data on purpose. In real seismic images, steeply dipping layers and high-angle faults are usually poorly imaged. With this PSF, steep reflectors fade as well: with the default parameters, a reflector keeps about 38% of its amplitude at a dip of 30 degrees and 6% at 60 degrees. The options below change the image. Dip-independent imaging (`yn_dip_independent`) keeps every reflector at full amplitude whatever its dip. It gives clean images, but field data rarely image steep features this well. The other options give the image the character of migrated field data. All of them are off by default. With or without them, the PSF is centered on the sample that the convolution aligns with the input, so the image is aligned with the model and the labels for both even and odd model sizes. Every PSF that RGM builds, separable or isotropic, is scaled so that a flat reflector is imaged with the amplitude of its reflection coefficient. The image amplitude therefore does not depend on the wavelet, its frequency, `psf_sigma`, or the model dimension. A custom PSF (`custom_psf = .true.`) is used as given.
 
 > **`yn_dip_independent` (logical)**
-- **Description**: Dip-independent imaging. The reflectivity is normalized by the cosine of the layer dip, estimated from the RGT with faults, salt and karst excluded, and convolved with an isotropic PSF whose projection onto any direction is the zero-phase source wavelet. Every reflector then keeps its wavelet and amplitude whatever its dip, and each fault shows as reflector offsets plus a weak fault-plane reflection from the juxtaposed layers. The RGT and the fault labels are computed internally even when `yn_rgt` or `yn_fault` is `.false.`, and released afterwards. For the isotropic PSF, `psf_sigma(2:3)` are not used.
+- **Description**: Dip-independent imaging. The reflectivity is normalized by the cosine of the layer dip, estimated from the RGT with faults, salt and karst excluded, and convolved with an isotropic PSF whose projection onto any direction is the zero-phase source wavelet. Every reflector then keeps its wavelet and amplitude whatever its dip, and each fault shows as reflector offsets plus a weak fault-plane reflection from the juxtaposed layers. The RGT and the fault labels are computed internally even when `yn_rgt` or `yn_fault` is `.false.`, and released afterwards. For the isotropic PSF, `psf_sigma(2:3)` are not used. Field data rarely image steep layers and high-angle faults this well, so this option is off by default.
 - **Default**: `.false.`
 
 > **`f0_bottom` (real)**
 - **Description**: Center frequency of the source wavelet at the bottom of the model. When `> 0`, RGM computes two images, one with a wavelet of center frequency `f0` and one with a wavelet of center frequency `f0_bottom`. It blends them with weights that change linearly with depth, so the top of the image uses only the `f0` wavelet and the bottom uses only the `f0_bottom` wavelet. This mimics the loss of high frequencies with depth, and the amplitude of a flat reflector stays constant.
+- **Default**: `0.0`
+
+> **`wave_phase` (real)**
+- **Description**: Constant phase rotation of the source wavelet in degrees. RGM rotates the PSF along depth, as a trace-by-trace phase rotation of field data does: the wavelet `w` becomes `w cos(wave_phase) + H(w) sin(wave_phase)`, where `H` is the Hilbert transform. Migrated images are usually close to zero phase, so rotations of a few tens of degrees mimic the residual phase of field data. A rotation of `90` gives an antisymmetric wavelet, like `wave = 'ricker_deriv'` or `'gaussian_deriv'`. The rotation applies to the separable and the isotropic PSF, and a flat reflector keeps the amplitude of its reflection coefficient.
 - **Default**: `0.0`
 
 > **`illum_level` (real)**
