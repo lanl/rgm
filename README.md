@@ -17,6 +17,7 @@ Recent changes:
 - Geomorphological unconformities (`unconf_shape`): meandering channels and canyons, and dendritic drainage channels and canyons.
 - Karst cave systems (`yn_karst`), from isolated caves to connected networks.
 - Thrust faults (`nthrust`): fault-bend and fault-propagation folds, imbricate fans, duplexes, and pop-ups.
+- Fault sense: in 2D and 3D, a positive `disp` gives a normal fault and a negative `disp` a reverse fault, and `fault_disp` keeps the sign.
 - Reflector shapes: asymmetric fold trains (`refl_shape = 'fold'`) and skewed Gaussian and Cauchy bumps (`refl_skew`).
 - Seismic images: dip-independent imaging (`yn_dip_independent`) and options that mimic migrated field data (`noise_type = 'migration'`, `f0_bottom`, `wave_phase`, `illum_level`, `jitter_shift`, `jitter_gain`).
 - Elastic models: each layer has its own random Vp/Vs (`vpvsratio`), and the PS and SP images stack P-wave incidence angles from 10° to 40° (`angle_ps`). See [example/example_elastic.py](example/example_elastic.py).

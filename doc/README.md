@@ -75,8 +75,8 @@ Fold trains (`refl_shape = 'fold'`):
 | `fwidth` | real | `2.0` | Width of the fault labels. |
 | `dip` | real(:) | `[70.0, 110.0]` | Ranges of the fault dip (degrees), one pair per fault set, e.g., `[30.0, 40.0, 60.0, 120.0]` for two sets. |
 | `strike` (3D) | real(:) | `[0.0, 180.0]` | Ranges of the fault strike (degrees), one pair per fault set. |
-| `rake` (3D) | real(:) | `[0.0, 180.0]` | Ranges of the fault rake (degrees), one pair per fault set. |
-| `disp` | real(:) | `[5.0, 30.0]` | Ranges of the fault displacement, one pair per fault set. The sign sets the slip sense; in 2D, positive is normal and negative is reverse. Unless `yn_regular_fault` is `.true.`, every other fault has its sign flipped, so the faults alternate in slip sense. |
+| `rake` (3D) | real(:) | `[0.0, 180.0]` | Ranges of the fault rake (degrees), one pair per fault set. `90` is dip slip; `0` and `180` are strike slip, in opposite directions. |
+| `disp` | real(:) | `[5.0, 30.0]` | Ranges of the fault displacement, one pair per fault set. Positive moves the hanging wall down (normal fault), and negative moves it up (reverse fault); in 3D, this holds for a rake between `0` and `180`. Unless `yn_regular_fault` is `.true.`, faults 2, 4, 6, ... take the opposite sign, so the faults alternate between normal and reverse. |
 | `delta_dip` | real(2) | `[15.0, 30.0]` | Range of the dip decrease from the top to the bottom of a fault (degrees), which gives listric faults. |
 | `yn_regular_fault` | logical | `.false.` | Two sets of quasi-regularly spaced faults (needs `nf >= 2`). `dip` and `disp` (and in 3D `strike` and `rake`) then give one value per set. |
 | `yn_group_faults` | logical | `.false.` | With `yn_regular_fault`, keep the faults of each set next to each other. |
@@ -90,9 +90,22 @@ Fold trains (`refl_shape = 'fold'`):
 | `yn_disp_decay` | logical | `.false.` | Decay the displacement away from the fault (drag and rollover). |
 | `disp_decay_width` | real(2) | `[0.5, 1.0]` | Range of the decay width (Gaussian standard deviation), relative to `n1`. |
 
+The hanging wall is the block above the fault, and it is the only block that moves. In 2D, a dip below 90 degrees makes the fault dip toward -x2, and a dip above 90 degrees toward +x2; in 3D, the two cases dip toward opposite sides of the strike. The sign of the displacement sets the fault type in 2D and 3D, and `fault_disp` keeps that sign:
+
+| Displacement | Hanging wall | Fault | `fault_disp` |
+| --- | --- | --- | --- |
+| `disp > 0` | Moves down | Normal | Positive |
+| `disp < 0` | Moves up | Reverse | Negative |
+
+Thrust faults (`nthrust`) are reverse faults, so their `fault_disp` is negative. In 3D, the rake splits the slip into dip slip and strike slip: a rake of 90 degrees gives pure dip slip, and 0 or 180 degrees gives pure strike slip, which moves the hanging wall only sideways. The sign rule holds for a rake between 0 and 180 degrees.
+
+Unless `yn_regular_fault` is `.true.`, faults 2, 4, 6, ... take the opposite sign of their drawn displacement. A positive range therefore gives both fault types: `disp = [5.0, 10.0]` makes faults 1, 3, 5, ... normal and faults 2, 4, 6, ... reverse. A single fault (`nf = 1`) keeps the sign of the range. With `yn_regular_fault = .true.`, the faults do not alternate, and each fault set takes the sign of its value; for example, `disp = [5.0, -5.0]` gives one set of normal faults and one set of reverse faults.
+
+A range that includes zero, such as `disp = [-10.0, 10.0]`, adds no fault type but can give faults with almost no offset. Without `yn_vary_disp`, the labels still mark such a fault along its whole trace, although the model shows no offset.
+
 ## Thrust faults
 
-Thrust faults are older than the other faults. In a model with unconformities, only the unit below the deepest unconformity has thrusts. All thrusts of a model share a lower flat (decollement) and, optionally, an upper flat (roof); the flats follow horizons, except that a decollement deep below the model is horizontal. The fault labels mark a thrust where its stratigraphic offset is at least 0.5 grid points, and `fault_disp` stores the slip; in 3D, `fault_rake` is 90 degrees. The RGT decreases across a thrust, where older layers lie above younger layers. With `nthrust = 0`, no thrust is inserted. Typical settings:
+Thrust faults are older than the other faults. In a model with unconformities, only the unit below the deepest unconformity has thrusts. All thrusts of a model share a lower flat (decollement) and, optionally, an upper flat (roof); the flats follow horizons, except that a decollement deep below the model is horizontal. The fault labels mark a thrust where its stratigraphic offset is at least 0.5 grid points, and `fault_disp` stores the slip as a negative value, as for a reverse fault; in 3D, `fault_rake` is 90 degrees. The RGT decreases across a thrust, where older layers lie above younger layers. With `nthrust = 0`, no thrust is inserted. Typical settings:
 
 | Structure | Parameters |
 | --- | --- |
@@ -241,6 +254,6 @@ The output arrays have the size `(n1, n2)` in 2D and `(n1, n2, n3)` in 3D.
 | `image_pp`, `image_ps`, `image_sp`, `image_ss` | Seismic images of elastic models, with `yn_elastic`. |
 | `rgt` | Relative geologic time, larger for older layers, with `yn_rgt`. |
 | `facies` | Layer index, with `yn_facies`. |
-| `fault`, `fault_dip`, `fault_disp`, `fault_strike` (3D), `fault_rake` (3D) | Fault index, dip, displacement, strike, and rake (angles in degrees), with `yn_fault`. |
+| `fault`, `fault_dip`, `fault_disp`, `fault_strike` (3D), `fault_rake` (3D) | Fault index, dip, displacement (positive for normal and negative for reverse faults), strike, and rake (angles in degrees), with `yn_fault`. |
 | `salt`, `karst` | `1` inside salt or caves, with `yn_salt` or `yn_karst`. |
 | `psf` | Point spread function of the image; for elastic models, of the SS image, and with `f0_bottom`, at the top. |

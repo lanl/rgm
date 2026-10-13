@@ -1542,7 +1542,8 @@ contains
                             f(i, j) = nf + k
                             ! Dip in (0, pi): below pi/2 the fault dips toward -x2
                             fdip(i, j) = modulo(dir*dip, real(const_pi))
-                            fdisp(i, j) = th(k)%sl(1)
+                            ! A thrust is a reverse fault, so its displacement is negative
+                            fdisp(i, j) = -th(k)%sl(1)
                             phi(i, j) = dperp
                         end if
                     end if
@@ -1770,7 +1771,8 @@ contains
                                 tdip = atan(tan(dip)/cos(beta))
                                 call strike_dip(th(k)%azimuth - beta, tdip, fstrike(i, j, l), fdip(i, j, l))
                                 frake(i, j, l) = 0.5*const_pi
-                                fdisp(i, j, l) = sl
+                                ! A thrust is a reverse fault, so its displacement is negative
+                                fdisp(i, j, l) = -sl
                                 phi(i, j, l) = dperp
                             end if
                         end if

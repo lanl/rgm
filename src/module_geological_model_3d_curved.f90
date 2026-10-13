@@ -79,6 +79,10 @@ module geological_model_3d_curved
         real :: dt = 1.0e-3
         real :: f0 = 150.0
         real :: fwidth = 2.0
+        !> Ranges of fault dip, strike, and rake angles and displacements; for
+        !> displacement, + -> normal fault and - -> reverse fault (as is fault_disp);
+        !> unless yn_regular_fault = .true., faults 2, 4, 6, ... take the opposite
+        !> sign; rake = 90 gives dip slip, and rake = 0 or 180 gives strike slip
         real, allocatable, dimension(:) :: dip, strike, rake, disp
         real, dimension(1:2) :: refl_slope = [0.0, 0.0]
         real, dimension(1:2) :: refl_slope_top = [0.0, 0.0]
@@ -998,8 +1002,10 @@ contains
                 rake = rake(1:nf)
                 rake = rake*const_deg2rad
 
+                ! Faults 2, 4, 6, ... take the opposite sign, so that the faults
+                ! alternate between normal and reverse; fault 1 keeps the given sign
                 disp = disp(1:nf)
-                disp(1:nf:2) = -disp(1:nf:2)
+                disp(2:nf:2) = -disp(2:nf:2)
 
             end if
         else
@@ -1601,8 +1607,9 @@ contains
                                 fdip(i, j, k) = theta_loc
                                 fstrike(i, j, k) = sl
                                 frake(i, j, k) = rake(fi)
-                                ! Store the local displacement magnitude
-                                fdisp(i, j, k) = abs(disp(fi))*alpha
+                                ! Store the local displacement, positive for a normal
+                                ! fault and negative for a reverse fault
+                                fdisp(i, j, k) = disp(fi)*alpha
                             end if
 
                             ! Mark the fault block (hanging wall side) to be shifted
@@ -1638,6 +1645,13 @@ contains
                 yn_pointwise = delta_strike(fi) /= 0 .or. this%yn_vary_disp .or. this%yn_disp_decay
                 s2c = cr*sin(strike(fi)) - sr*cd*cos(strike(fi))
                 s3c = cr*cos(strike(fi)) + sr*cd*sin(strike(fi))
+
+                ! Reverse the slip vector, so that a positive displacement moves the
+                ! hanging wall down (normal fault) and a negative displacement moves
+                ! it up (reverse fault), as in the 2D case
+                s1 = -s1
+                s2c = -s2c
+                s3c = -s3c
 
                 ! Lateral deviations of the fault surface at all depths, for
                 ! computing the distance to the fault when yn_disp_decay = .true.
@@ -1697,6 +1711,8 @@ contains
                                 if (yn_pointwise) then
                                     s2 = cr*sin(strike(fi) + dp) - sr*cd*cos(strike(fi) + dp)
                                     s3 = cr*cos(strike(fi) + dp) + sr*cd*sin(strike(fi) + dp)
+                                    s2 = -s2
+                                    s3 = -s3
                                 else
                                     s2 = s2c
                                     s3 = s3c

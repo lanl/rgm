@@ -73,7 +73,7 @@ models2 = [
               refl_shape='random', refl_smooth=30, refl_height=[0.0, 8.0], refl_height_top=[0.0, 4.0],
               nthrust=2, thrust_back=1.0, thrust_tip_z=[0.25, 0.45],
               yn_dip_independent=True, yn_rgt=True, noise_level=0.0)),
-    ('Thrusts and\nnormal faults',
+    ('Thrusts cut\nby faults',
      rgm.rgm2(n1=151, n2=301, nl=30, nf=2, seed=218, lwv=0.4, lwh=0.1,
               refl_shape='random', refl_smooth=30, refl_height=[0.0, 8.0], refl_height_top=[0.0, 4.0],
               dip=[55.0, 70.0], disp=[8.0, 12.0],
@@ -91,7 +91,7 @@ for i, (name, p) in enumerate(models2):
     showmatrix(p.fault_dip, background=p.image, backcolormap='binary', backclip=clip,
                colormap='jet', cmin=0, cmax=180, alphas='0:0,0.5:1', imageonly=True,
                outfile='fault_types/2d_%02d_dip.png' % i)
-    showmatrix(p.fault_disp, background=p.image, backcolormap='binary', backclip=clip,
+    showmatrix(abs(p.fault_disp), background=p.image, backcolormap='binary', backclip=clip,
                colormap='jet', cmin=0, cmax=40, alphas='0:0,0.5:1', imageonly=True,
                outfile='fault_types/2d_%02d_disp.png' % i)
     showmatrix(p.rgt, colormap='magma', cmin=0, cmax=1, imageonly=True,
@@ -164,7 +164,7 @@ models3 = [
               refl_shape='random', refl_smooth=30, refl_height=[0.0, 8.0], refl_height_top=[0.0, 4.0],
               nthrust=2, thrust_back=1.0, thrust_tip_z=[0.25, 0.4], thrust_delta_strike=[5.0, 10.0],
               yn_dip_independent=True, yn_rgt=True, noise_level=0.0)),
-    ('Thrusts and\nnormal faults',
+    ('Thrusts cut\nby faults',
      rgm.rgm3(n1=128, n2=160, n3=160, nl=30, nf=2, seed=215, lwv=0.4, lwh=0.1,
               refl_shape='random', refl_smooth=30, refl_height=[0.0, 8.0], refl_height_top=[0.0, 4.0],
               dip=[60.0, 75.0], disp=[6.0, 10.0],
@@ -181,7 +181,7 @@ for i, (name, q) in enumerate(models3):
     for data, colormap, cmin, cmax, tag in [(q.vp, 'jet', 2000, 4000, 'vp'),
                                             (q.image, 'binary', -clip, clip, 'image'),
                                             (q.fault_dip, 'jet', 0, 180, 'dip'),
-                                            (q.fault_disp, 'jet', 0, 40, 'disp'),
+                                            (abs(q.fault_disp), 'jet', 0, 40, 'disp'),
                                             (q.fault_strike, 'jet', 0, 180, 'strike'),
                                             (q.rgt, 'magma', 0, 1, 'rgt')]:
         try:

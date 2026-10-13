@@ -182,7 +182,7 @@ showslice(q.image, colormap='binary', clip=2*q.image.std(), label1='Z', label2='
 showslice(q.fault, background=q.image, backcolormap='binary', backclip=2*q.image.std(),
           colormap='jet', alphas='0:0,0.5:1', label1='Z', label2='X', label3='Y', outfile='thrust_blind_3d_fault.png')
 
-# A duplex cut by two younger normal faults
+# A duplex cut by two younger faults
 q = rgm.rgm3(n1=128, n2=160, n3=160, nl=30, nf=2, seed=215, lwv=0.4, lwh=0.1,
              refl_shape='random', refl_smooth=30, refl_height=[0.0, 8.0], refl_height_top=[0.0, 4.0],
              dip=[60.0, 75.0], disp=[6.0, 10.0],

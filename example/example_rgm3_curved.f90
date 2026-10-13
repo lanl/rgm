@@ -83,7 +83,7 @@ program test
 
     ! ==================================================================
     ! Thrust faults: a blind thrust whose slip dies out along strike, and a
-    ! duplex cut by younger normal faults; the images are dip-independent
+    ! duplex cut by younger faults; the images are dip-independent
 
     block
 
@@ -116,7 +116,7 @@ program test
         call output_array(p%image, './example_3d_image_thrust_blind.bin')
         call output_array(p%fault, './example_3d_fault_thrust_blind.bin')
 
-        ! A duplex of three thrusts, cut by two younger normal faults
+        ! A duplex of three thrusts, cut by two younger faults
         p%nf = 2
         p%dip = [60.0, 75.0]
         p%disp = [6.0, 10.0]

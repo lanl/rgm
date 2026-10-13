@@ -80,7 +80,8 @@ module geological_model_2d_curved
         !> Fracture width (in terms of grid number)
         real :: fwidth = 2.0
         !> Range of fault dip angles and displacements; for displacement/throw,
-        !> + -> normal fault and - -> reverse fault
+        !> + -> normal fault and - -> reverse fault; unless yn_regular_fault = .true.,
+        !> faults 2, 4, 6, ... take the opposite sign
         real, allocatable, dimension(:) :: dip, disp
         !> Dip increase/decrease at the top compared with the top
         real, dimension(1:2) :: delta_dip = [15.0, 30.0]
@@ -198,7 +199,8 @@ module geological_model_2d_curved
         !> if = .true., the array fault will be filled with 1, 2, 3, ..., nf, indicating
         !> the numbered faults within the model; if only fault probability is needed, then
         !> clip(fault, 0, 1) will do the work. Meanwhile, fault_dip and fault_disp will be
-        !> filled with the dip angles and displacements associated with the faults.
+        !> filled with the dip angles and displacements associated with the faults;
+        !> fault_disp is positive for normal faults and negative for reverse faults.
         !> Note that this value does not affect the insertion of faults into the model set by nf, ...
         !> i.e., if = .false., then it will not fill the fault arrays, but the model will still be
         !> a faulted model.
@@ -948,8 +950,10 @@ contains
                 dip = dip(1:nf)
                 dip = dip*const_deg2rad
 
+                ! Faults 2, 4, 6, ... take the opposite sign, so that the faults
+                ! alternate between normal and reverse; fault 1 keeps the given sign
                 disp = disp(1:nf)
-                disp(1:nf:2) = -disp(1:nf:2)
+                disp(2:nf:2) = -disp(2:nf:2)
 
             end if
         else
@@ -1375,8 +1379,9 @@ contains
                                 f(i, j) = fi
                                 cf(i, j) = 1.0
                                 fdip(i, j) = theta
-                                ! Store the local displacement magnitude
-                                fdisp(i, j) = abs(disp(fi))*alpha
+                                ! Store the local displacement, positive for a normal
+                                ! fault and negative for a reverse fault
+                                fdisp(i, j) = disp(fi)*alpha
                             end if
 
                         end do
@@ -1395,7 +1400,7 @@ contains
                                     f(i, j) = fi
                                     cf(i, j) = 1.0
                                     fdip(i, j) = theta
-                                    fdisp(i, j) = abs(disp(fi))*alpha
+                                    fdisp(i, j) = disp(fi)*alpha
                                 end if
                             end do
                             !$omp end parallel do
