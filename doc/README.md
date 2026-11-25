@@ -71,13 +71,13 @@ Fold trains (`refl_shape = 'fold'`):
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
 | `nf` | integer | `4` | Number of faults. |
-| `yn_fault` | logical | `.true.` | Fill the fault labels. `fault` holds `1` to `nf` for the faults, `nf + 1` to `nf + nthrust` for the thrust faults, and `0` elsewhere. It does not control the insertion of faults, and is set to `.false.` when `nf = 0` and `nthrust = 0`. |
+| `yn_fault` | logical | `.true.` | Fill the fault labels. `fault` holds `1` to `nf` for the faults, `nf + 1` to `nf + nthrust` for the thrust faults, then one index for each fault of the flower-like branched fault systems, and `0` elsewhere. It does not control the insertion of faults, and is set to `.false.` when `nf`, `nthrust`, and `nflower` are all zero. |
 | `fwidth` | real | `2.0` | Width of the fault labels. |
-| `dip` | real(:) | `[70.0, 110.0]` | Ranges of the fault dip (degrees), one pair per fault set, e.g., `[30.0, 40.0, 60.0, 120.0]` for two sets. |
+| `dip` | real(:) | `[70.0, 110.0]` | Ranges of the fault dip at the top of the model (degrees), one pair per fault set, e.g., `[30.0, 40.0, 60.0, 120.0]` for two sets. |
 | `strike` (3D) | real(:) | `[0.0, 180.0]` | Ranges of the fault strike (degrees), one pair per fault set. |
 | `rake` (3D) | real(:) | `[0.0, 180.0]` | Ranges of the fault rake (degrees), one pair per fault set. `90` is dip slip; `0` and `180` are strike slip, in opposite directions. |
 | `disp` | real(:) | `[5.0, 30.0]` | Ranges of the fault displacement, one pair per fault set. Positive moves the hanging wall down (normal fault), and negative moves it up (reverse fault); in 3D, this holds for a rake between `0` and `180`. Unless `yn_regular_fault` is `.true.`, faults 2, 4, 6, ... take the opposite sign, so the faults alternate between normal and reverse. |
-| `delta_dip` | real(2) | `[15.0, 30.0]` | Range of the dip decrease from the top to the bottom of a fault (degrees), which gives listric faults. |
+| `delta_dip` | real(2) | `[15.0, 30.0]` | Range of the dip decrease from the top to the bottom of the model (degrees), which gives listric faults: a fault dips by `dip` at the top and by `dip - delta_dip` at the bottom. |
 | `yn_regular_fault` | logical | `.false.` | Two sets of quasi-regularly spaced faults (needs `nf >= 2`). `dip` and `disp` (and in 3D `strike` and `rake`) then give one value per set. |
 | `yn_group_faults` | logical | `.false.` | With `yn_regular_fault`, keep the faults of each set next to each other. |
 | `delta_strike` (3D) | real(2) | `[0.0, 0.0]` | Range of the maximum strike deviation along a fault (degrees), which curves the faults in map view; the slip follows the local strike. |
@@ -98,6 +98,10 @@ The hanging wall is the block above the fault, and it is the only block that mov
 | `disp < 0` | Moves up | Reverse | Negative |
 
 Thrust faults (`nthrust`) are reverse faults, so their `fault_disp` is negative. In 3D, the rake splits the slip into dip slip and strike slip: a rake of 90 degrees gives pure dip slip, and 0 or 180 degrees gives pure strike slip, which moves the hanging wall only sideways. The sign rule holds for a rake between 0 and 180 degrees.
+
+In 3D, `fault_strike` lies between 0 and 180 degrees. With `delta_strike`, the local strike of a fault can leave this range; the label then gives the opposite direction along the same line, and `fault_dip` and `fault_rake` hold 180 degrees minus the dip and the rake, so that the three labels together still describe the fault.
+
+In a model with flower-like branched fault systems, or with faults that use `yn_vary_disp` or `yn_disp_decay`, the fault labels are carried as geometry: points on each fault, the thrust faults included, move with the rocks through all the younger faults, and the labels are marked once at the end, so they keep their width. `fault_dip` and `fault_strike` are then those of each fault as it is at the end.
 
 Unless `yn_regular_fault` is `.true.`, faults 2, 4, 6, ... take the opposite sign of their drawn displacement. A positive range therefore gives both fault types: `disp = [5.0, 10.0]` makes faults 1, 3, 5, ... normal and faults 2, 4, 6, ... reverse. A single fault (`nf = 1`) keeps the sign of the range. With `yn_regular_fault = .true.`, the faults do not alternate, and each fault set takes the sign of its value; for example, `disp = [5.0, -5.0]` gives one set of normal faults and one set of reverse faults.
 
@@ -134,6 +138,35 @@ Thrust faults are older than the other faults. In a model with unconformities, o
 | `thrust_azimuth` (3D) | real(2) | `[0.0, 360.0]` | Range of the transport azimuth (degrees, from x2 toward x3). |
 | `thrust_delta_strike` (3D) | real(2) | `[0.0, 0.0]` | Range of the maximum strike deviation along the ramp traces (degrees). |
 | `thrust_radius` (3D) | real(2) | `[0.0, 0.0]` | Range of the half length of the slip patch along strike, relative to `0.5*(n2 + n3)`. `[0, 0]`: constant slip. |
+
+## Flower-like branched fault systems
+
+A flower-like branched fault system is a set of faults that branch upward from one steep master fault, like the faults above a strike-slip fault: the master fault and two sets of branches that lean apart. The branches of a set are closely aligned listric faults, steep at the top and flatter with depth, at a quasi-regular spacing. Each branch ends downward where it meets the master fault or the first branch of the other set. Normal faults give a negative system (a sag), and reverse faults a positive system (a pop-up). These systems are younger than the thrust faults and older than the faults. In 3D, a system is carried along the trace of its master fault.
+
+| Structure | Parameters |
+| --- | --- |
+| Negative system | `nflower = 1`, `flower_type = 'negative'` |
+| Positive system | `nflower = 1`, `flower_type = 'positive'` |
+| Dense system with tilted blocks | `nflower = 1`, `flower_nbranch = [6, 6]`, `flower_spacing = [0.06, 0.09]`, `flower_decay_width = [0.06, 0.09]` |
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `nflower` | integer | `0` | Number of flower-like branched fault systems. |
+| `flower_type` | character | `'random'` | `negative` (normal faults), `positive` (reverse faults), `hybrid` (reverse master fault and first branches, the other branches normal and smaller), or `random` (negative or positive). |
+| `flower_dip` | real(2) | `[84.0, 90.0]` | Range of the master-fault dip (degrees). |
+| `flower_z` | real(2) | `[0.55, 0.75]` | Range of the depth of the split point, where the master fault ends and the first branches start, relative to `n1`. |
+| `flower_branch_dip` | real(2) | `[72.0, 84.0]` | Range of the branch dip at the top of the model (degrees). |
+| `flower_delta_dip` | real(2) | `[25.0, 40.0]` | Range of the dip decrease of a branch from the top to the bottom of the model (degrees). |
+| `flower_disp` | real(2) | `[0.0, 0.0]` | Range of the displacement of each fault. `[0, 0]`: `[0.02, 0.05]*n1`. |
+| `flower_master_disp` | real(2) | `[1.0, 1.0]` | Range of the displacement of the master fault, relative to `flower_disp`. |
+| `flower_nbranch` | integer(2) | `[2, 4]` | Range of the number of branches in each set, drawn for each system. |
+| `flower_spacing` | real(2) | `[0.08, 0.14]` | Range of the spacing of the branches of a set, relative to `n1`. |
+| `flower_decay_width` | real(2) | `[0.1, 0.3]` | Range of the width over which the displacement decays away from each fault, relative to `n1`. A small width tilts the blocks between the faults; a large width gives flat steps. |
+| `flower_strike` (3D) | real(2) | `[0.0, 180.0]` | Range of the strike of the master fault (degrees), as `strike`. |
+| `flower_delta_strike` (3D) | real(2) | `[0.0, 15.0]` | Range of the maximum strike deviation along the master fault (degrees). |
+| `flower_radius` (3D) | real(2) | `[0.6, 1.5]` | Range of the half length along strike over which the displacement of a branch falls to zero, relative to `0.5*(n2 + n3)`, so a branch can die out along strike. |
+
+The displacement of a branch fades to zero toward its start, so a branch ends on the fault that it starts on. `fault_disp` stores the local displacement.
 
 ## Unconformity
 

@@ -7,31 +7,19 @@
 
 `RGM` is an open-source package for generating realistic random geological models, including medium parameter models, seismic images, geological faults, relative geological time (RGT), salt bodies, karst systems, and unconformities, using a multi-randomization method. The generated data can be used to train machine learning models, e.g., geological fault detection models, the multitask inference-refinement model [MTI-MTR](https://github.com/lanl/mtl), and the seismicity-constrained fault characterization model [SCF](https://github.com/lanl/scf).
 
+In 2D and 3D, `RGM` generates:
+- **Models**: layered acoustic (Vp, density) and elastic (Vp, Vs, density) models, with random, folded, or bump-shaped reflectors.
+- **Seismic images**: acoustic images, and PP, PS, SP, and SS images of elastic models, with optional noise that mimics migrated field data.
+- **Faults**: normal and reverse faults, planar or listric; quasi-parallel fault sets; faults that die out; faults with displacement decay; and in 3D, strike-slip, oblique-slip, and strike-varying faults.
+- **Thrust faults**: fault-propagation folds, fault-bend folds, imbricate fans, duplexes, and pop-ups.
+- **Flower-like branched fault systems**: negative, positive, and hybrid.
+- **Unconformities**: random erosional surfaces, meandering channels and canyons, and dendritic drainage channels and canyons.
+- **Salt bodies** and **karst cave systems**.
+- **Labels**: fault index, dip, strike, rake, and displacement; RGT; facies; and salt and karst masks.
+
 The work was supported by Los Alamos National Laboratory (LANL) Laboratory Directed Research and Development (LDRD) program. LANL is operated by Triad National Security, LLC, for the National Nuclear Security Administration (NNSA) of the U.S. Department of Energy (DOE) under Contract No. 89233218CNA000001. The research used high-performance computing resources provided by LANL's Institutional Computing program.
 
 The code has been approved for public release under LANL approval reference O4778.
-
-Recent changes: 
-- The legacy elastic generators `rgm2_elastic` and `rgm3_elastic` are removed; use v1.0.0 if you need them. The outdated types `rgm2` and `rgm3` are included again from v2.1.0 for backward compatibility but are not maintained; new work should use `rgm2_curved` and `rgm3_curved`.
-- `rgm2_curved` (2D) and `rgm3_curved` (3D) are the standard API for acoustic and elastic models, with strike-varying faults (`delta_strike`), faults that die out within the model (`yn_vary_disp`), and displacement decay away from faults (`yn_disp_decay`).
-- Geomorphological unconformities (`unconf_shape`): meandering channels and canyons, and dendritic drainage channels and canyons.
-- Karst cave systems (`yn_karst`), from isolated caves to connected networks.
-- Thrust faults (`nthrust`): fault-bend and fault-propagation folds, imbricate fans, duplexes, and pop-ups.
-- Fault sense: in 2D and 3D, a positive `disp` gives a normal fault and a negative `disp` a reverse fault, and `fault_disp` keeps the sign.
-- Reflector shapes: asymmetric fold trains (`refl_shape = 'fold'`) and skewed Gaussian and Cauchy bumps (`refl_skew`).
-- Seismic images: dip-independent imaging (`yn_dip_independent`) and options that mimic migrated field data (`noise_type = 'migration'`, `f0_bottom`, `wave_phase`, `illum_level`, `jitter_shift`, `jitter_gain`).
-- Elastic models: each layer has its own random Vp/Vs (`vpvsratio`), and the PS and SP images stack P-wave incidence angles from 10° to 40° (`angle_ps`). See [example/example_elastic.py](example/example_elastic.py).
-- The standalone geomorphological generators (`meandering_channel`, `meandering_canyon`, `drainage_channel`, `drainage_canyon`, `karst_2d`, `karst_3d`) are available through `librgm`.
-- A Python interface (see [python/README.md](python/README.md)): the classes `rgm.rgm2` and `rgm.rgm3` are the Fortran types `rgm2_curved` and `rgm3_curved`. For instance:
-```python
-import rgm
-
-p = rgm.rgm3(n1=128, n2=128, n3=128, nf=4, seed=1234,
-             delta_strike=[15, 25], yn_vary_disp=True,
-             unconf=1, unconf_shape='meander_channel', yn_karst=True)
-p.generate()
-vp, image, fault = p.vp, p.image, p.fault    # numpy arrays
-```
 
 # Documentation
 - [doc/README.md](doc/README.md) lists the parameters of `rgm2_curved` and `rgm3_curved`.
@@ -102,13 +90,14 @@ The compiled executables will be in `example/bin`:
 
 Running these executables will generate the medium parameter models, seismic images, and the associated labels (fault attributes, RGT, facies, salt and karst masks) in the working directory. All the generated files will be in little-endian single-precision raw binary format, with dimensions specified in the respective codes.
 
-For the Python interface, [example/example_python.py](example/example_python.py) generates one model for each feature type, [example/example_shape_noise.py](example/example_shape_noise.py) shows reflector shapes and image noise, [example/example_fault_types.py](example/example_fault_types.py) shows the fault types, and [example/example_elastic.py](example/example_elastic.py) shows elastic models. The scripts plot with `pymplot` and save the figures in the working directory:
+For the Python interface, [example/example_python.py](example/example_python.py) generates one model for each feature type, [example/example_shape_noise.py](example/example_shape_noise.py) shows reflector shapes and image noise, [example/example_fault_types.py](example/example_fault_types.py) shows the fault types, [example/example_flower.py](example/example_flower.py) shows flower-like branched fault systems, and [example/example_elastic.py](example/example_elastic.py) shows elastic models. The scripts plot with `pymplot` and save the figures in the working directory:
 
 ```
 cd example
 python3 example_python.py
 python3 example_shape_noise.py
 python3 example_fault_types.py
+python3 example_flower.py
 python3 example_elastic.py
 ```
 

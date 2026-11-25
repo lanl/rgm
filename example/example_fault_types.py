@@ -79,6 +79,16 @@ models2 = [
               dip=[55.0, 70.0], disp=[8.0, 12.0],
               nthrust=2, thrust_vergence='right', thrust_z=[1.1, 1.2], thrust_tip_z=[0.1, 0.4],
               yn_dip_independent=True, yn_rgt=True, noise_level=0.0)),
+    ('Negative\nflower-like\nbranched faults',
+     rgm.rgm2(n1=151, n2=301, nl=30, nf=0, seed=231, lwv=0.4, lwh=0.1,
+              refl_shape='random', refl_smooth=30, refl_height=[0.0, 8.0], refl_height_top=[0.0, 4.0],
+              nflower=1, flower_type='negative', flower_nbranch=[3, 3], flower_disp=[5.0, 8.0],
+              yn_dip_independent=True, yn_rgt=True, noise_level=0.0)),
+    ('Positive\nflower-like\nbranched faults',
+     rgm.rgm2(n1=151, n2=301, nl=30, nf=0, seed=244, lwv=0.4, lwh=0.1,
+              refl_shape='random', refl_smooth=30, refl_height=[0.0, 8.0], refl_height_top=[0.0, 4.0],
+              nflower=1, flower_type='positive', flower_nbranch=[3, 3], flower_disp=[5.0, 8.0],
+              yn_dip_independent=True, yn_rgt=True, noise_level=0.0)),
 ]
 
 for i, (name, p) in enumerate(models2):
@@ -170,6 +180,16 @@ models3 = [
               dip=[60.0, 75.0], disp=[6.0, 10.0],
               nthrust=3, thrust_roof=1.0, thrust_z=[0.85, 0.9], thrust_roof_z=[0.5, 0.55], thrust_disp=[20.0, 25.0],
               yn_dip_independent=True, yn_rgt=True, noise_level=0.0)),
+    ('Negative\nflower-like\nbranched faults',
+     rgm.rgm3(n1=128, n2=160, n3=160, nl=30, nf=0, seed=343, lwv=0.4, lwh=0.1,
+              refl_shape='random', refl_smooth=30, refl_height=[0.0, 8.0], refl_height_top=[0.0, 4.0],
+              nflower=1, flower_type='negative', flower_nbranch=[3, 3], flower_disp=[5.0, 8.0], flower_strike=[25.0, 35.0],
+              yn_dip_independent=True, yn_rgt=True, noise_level=0.0)),
+    ('Positive\nflower-like\nbranched faults',
+     rgm.rgm3(n1=128, n2=160, n3=160, nl=30, nf=0, seed=345, lwv=0.4, lwh=0.1,
+              refl_shape='random', refl_smooth=30, refl_height=[0.0, 8.0], refl_height_top=[0.0, 4.0],
+              nflower=1, flower_type='positive', flower_nbranch=[3, 3], flower_disp=[5.0, 8.0], flower_strike=[25.0, 35.0],
+              yn_dip_independent=True, yn_rgt=True, noise_level=0.0)),
 ]
 
 # The 3D panels show a depth slice at three quarters of the depth in front of
@@ -238,7 +258,7 @@ for dim, models, tags, titles, ranges in [
             ax.set_yticks([])
             if dim == '3d':
                 ax.axis('off')
-        fig.text((lw - 0.35)/fw, (y + 0.5*ph)/fh, models[i][0], rotation=90, ha='center', va='center')
+        fig.text((lw - 0.42)/fw, (y + 0.5*ph)/fh, models[i][0], rotation=90, ha='center', va='center')
     for j in range(ncol):
         x = lw + j*(pw + gap)
         fig.text((x + 0.5*pw)/fw, (fh - 0.5*th)/fh, titles[j], ha='center', va='center')

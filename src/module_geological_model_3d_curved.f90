@@ -22,6 +22,8 @@ module geological_model_3d_curved
     use geological_model_utility
     use geological_model_realism
     use geological_model_thrust
+    use geological_model_label
+    use geological_model_flower
     use geological_model_meander
     use geological_model_drainage
     use geological_model_karst
@@ -251,6 +253,29 @@ module geological_model_3d_curved
         real, dimension(1:2) :: thrust_azimuth = [0.0, 360.0]
         real, dimension(1:2) :: thrust_delta_strike = [0.0, 0.0]
         real, dimension(1:2) :: thrust_radius = [0.0, 0.0]
+        !> Flower-like branched fault systems (flowers, for short), younger than
+        !> the thrusts and older than the faults (see rgm2_curved): each flower is
+        !> a flower of rgm2_curved in the section across its strike, carried
+        !> along the trace of its master fault. In addition to the parameters of
+        !> rgm2_curved: ranges of the strike of the master fault (degrees, as the
+        !> strike of the faults), of the largest deviation of the local strike
+        !> along the trace (degrees), and of the half length along strike over
+        !> which the displacement of a branch falls to zero (relative to
+        !> (n2 + n3)/2)
+        integer :: nflower = 0
+        character(len=12) :: flower_type = 'random'
+        real, dimension(1:2) :: flower_dip = [84.0, 90.0]
+        real, dimension(1:2) :: flower_z = [0.55, 0.75]
+        real, dimension(1:2) :: flower_branch_dip = [72.0, 84.0]
+        real, dimension(1:2) :: flower_delta_dip = [25.0, 40.0]
+        real, dimension(1:2) :: flower_disp = [0.0, 0.0]
+        real, dimension(1:2) :: flower_master_disp = [1.0, 1.0]
+        integer, dimension(1:2) :: flower_nbranch = [2, 4]
+        real, dimension(1:2) :: flower_spacing = [0.08, 0.14]
+        real, dimension(1:2) :: flower_decay_width = [0.1, 0.3]
+        real, dimension(1:2) :: flower_strike = [0.0, 180.0]
+        real, dimension(1:2) :: flower_delta_strike = [0.0, 15.0]
+        real, dimension(1:2) :: flower_radius = [0.6, 1.5]
 
         !==============================================================================================
         integer :: unconf = 0
@@ -835,7 +860,7 @@ contains
 
         logical :: yn_aux, yn_rgt_user, yn_fault_user
 
-        if (this%nf == 0 .and. this%nthrust == 0) then
+        if (this%nf == 0 .and. this%nthrust == 0 .and. this%nflower == 0) then
             this%yn_fault = .false.
         end if
 
@@ -843,12 +868,12 @@ contains
         ! and thrust faults and the layer Vp/Vs ratios of elastic models need the RGT;
         ! compute them internally and release them afterwards if not requested
         yn_aux = this%yn_dip_independent .or. (this%noise_level /= 0 .and. this%noise_type == 'migration') &
-            .or. this%nthrust > 0 .or. this%yn_elastic
+            .or. this%nthrust > 0 .or. this%nflower > 0 .or. this%yn_elastic
         yn_rgt_user = this%yn_rgt
         yn_fault_user = this%yn_fault
         if (yn_aux) then
             this%yn_rgt = .true.
-            if (this%nf > 0 .or. this%nthrust > 0) then
+            if (this%nf > 0 .or. this%nthrust > 0 .or. this%nflower > 0) then
                 this%yn_fault = .true.
             end if
         end if
@@ -897,7 +922,7 @@ contains
         integer :: nsf
         real :: xc, yc, cphi, sphi, u0, v0, umin, umax
         real :: dev, dev_prev, ddev, theta_loc, dp, gc, wu, vdist, vdist_prev, sl
-        integer :: iu, nu
+        integer :: iu, nu, nw
         logical :: yn_mark
         real, allocatable, dimension(:) :: dphi, gcurve, devs
         real, allocatable, dimension(:) :: disp_au, disp_az, disp_uc, disp_zc, decay_w
@@ -923,6 +948,11 @@ contains
         real :: xcenter, ycenter
         real :: m1, m2, m3
         type(thrust_fault), allocatable, dimension(:) :: th
+        type(flower_3d), allocatable, dimension(:) :: fw
+        integer :: nff
+        type(fault_mesh) :: pm
+        type(regular_fault_3d) :: rf
+        logical :: yn_mesh
         integer :: pe1, pe2
         real :: psi, nlat
 
@@ -1017,6 +1047,8 @@ contains
 
         ! Thrust faults: a common transport azimuth, with backthrusts opposite; the
         ! ramp traces and the slip vary along strike
+        pe1 = 0
+        pe2 = 0
         if (this%nthrust > 0) then
             psi = rand(range=this%thrust_azimuth, seed=safe_seed(int(this%seed, 8)*227))*const_deg2rad
             nlat = abs(this%n2*cos(psi)) + abs(this%n3*sin(psi))
@@ -1031,6 +1063,14 @@ contains
             end do
             call thrust_padding(th, pe1, pe2)
         end if
+        ! Each fault of a flower shifts its hanging wall by at most its displacement
+        if (this%nflower > 0) then
+            nff = this%nflower*2*max(maxval(this%flower_nbranch), 1)
+            pe1 = pe1 + ceiling((nff + this%nflower*max(maxval(this%flower_master_disp) - 1.0, 0.0)) &
+                *merge(0.05*this%n1, maxval(abs(this%flower_disp)), maxval(abs(this%flower_disp)) == 0)) + 2
+            pe2 = pe2 + ceiling(0.7*(nff + this%nflower*max(maxval(this%flower_master_disp) - 1.0, 0.0)) &
+                *merge(0.05*this%n1, maxval(abs(this%flower_disp)), maxval(abs(this%flower_disp)) == 0)) + 2
+        end if
 
         ! The dimensions of the padded model
         sumdisp = disp*(-sin(rake)*sin(dip))
@@ -1038,7 +1078,7 @@ contains
         m2 = max(maxval(abs(this%refl_slope)), maxval(abs(this%refl_slope_top)))
         m3 = max(maxval(abs(this%refl_height)), maxval(abs(this%refl_height_top)))
         ne1 = ceiling(max(m1, m2) + m3)
-        if (this%nthrust > 0) then
+        if (this%nthrust > 0 .or. this%nflower > 0) then
             ne1 = ne1 + pe1
         end if
         n1 = n1 + 2*ne1
@@ -1057,7 +1097,7 @@ contains
             sumdisp = disp*(cos(rake)*cos(strike) + sin(rake)*cos(dip)*sin(strike))
             ne3 = ceiling(max(sum(sumdisp, mask=sumdisp > 0), -sum(sumdisp, mask=sumdisp < 0)))
         end if
-        if (this%nthrust > 0) then
+        if (this%nthrust > 0 .or. this%nflower > 0) then
             ne2 = ne2 + pe2
             ne3 = ne3 + pe2
         end if
@@ -1403,9 +1443,41 @@ contains
             tt = zeros(n1, n2, n3)
         end if
 
-        ! Add thrust faults, which are older than the faults
+        ! The flowers and the faults with a displacement that varies in space
+        ! (yn_vary_disp, yn_disp_decay) move the rocks non-rigidly, and labels
+        ! moved from grid point to grid point then become irregular in width.
+        ! The labels of all the faults that they move are therefore carried as
+        ! meshes of points and marked after them. The faults with the default
+        ! rigid displacement shift the older labels by whole grid points, which
+        ! keeps them intact
+        yn_mesh = nf >= 1 .and. (this%yn_vary_disp .or. this%yn_disp_decay)
+
+        ! Add thrust faults and flower-like branched fault systems (flowers),
+        ! which are older than the faults. With flowers or meshes, the thrusts
+        ! are carried as meshes too, in place of the labels that
+        ! thrust_apply_3d marks
         if (this%nthrust > 0) then
-            call thrust_apply_3d(th, ne1, fwidth, nf, w, t, m, f, fdip, fstrike, frake, fdisp, this%yn_facies)
+            if (this%nflower > 0 .or. yn_mesh) then
+                call thrust_apply_3d(th, ne1, fwidth, nf, w, t, m, f, fdip, fstrike, frake, fdisp, this%yn_facies, pm)
+                f = 0.0
+                fdip = 0.0
+                fstrike = 0.0
+                frake = 0.0
+                fdisp = 0.0
+            else
+                call thrust_apply_3d(th, ne1, fwidth, nf, w, t, m, f, fdip, fstrike, frake, fdisp, this%yn_facies)
+            end if
+        end if
+        if (this%nflower > 0) then
+            fw = flower_draw_3d(this%nflower, n1, n2, n3, ne1, ne2, ne3, this%n1, this%n2, this%n3, this%seed, &
+                this%flower_dip, this%flower_z, this%flower_nbranch, this%flower_branch_dip, this%flower_delta_dip, &
+                this%flower_disp, this%flower_master_disp, this%flower_spacing, this%flower_decay_width, this%flower_type, &
+                this%flower_strike, this%flower_delta_strike, this%flower_radius)
+            call flower_apply_3d(fw, nf + this%nthrust, 0.1*this%n1, w, t, m, pm, this%yn_facies)
+            ! The labels of the thrusts and the flowers, before rigid faults
+            if (.not. yn_mesh) then
+                call mesh_label_3d(pm, fwidth, f, fdip, fstrike, frake, fdisp)
+            end if
         end if
 
         if (nf >= 1) then
@@ -1521,6 +1593,21 @@ contains
                 ! Let the curved trace pass through the fault center
                 gcurve = gcurve - gcurve(clip(nint(-umin) + 1, 1, nu))
 
+                ! Lateral deviations of the curved (listric) fault surface at all
+                ! depths w.r.t. the topmost fault trace, along the base strike
+                ! normal. Each row steps sideways by 1/tan(dip), and the steps add
+                ! up, so that the surface dips by dips(i, fi) at the row i, as the
+                ! fault trace of rgm2_curved does. The steps are added relative to
+                ! those of the planar fault of the top dip, which keeps a planar
+                ! fault exactly at (i - 1)/tan(dip)
+                devs = zeros(n1)
+                do i = 2, n1
+                    devs(i) = devs(i - 1) + (1.0/tan(dips(i - 1, fi)) - 1.0/tan(dips(1, fi)))
+                end do
+                do i = 1, n1
+                    devs(i) = devs(i) + 1.0/tan(dips(1, fi))*(i - 1.0)
+                end do
+
                 fblock = falses(n1, n2, n3)
                 dev_prev = 0.0
 
@@ -1528,15 +1615,14 @@ contains
 
                     theta = dips(i, fi)
 
-                    ! The lateral deviation of the curved (listric) fault
-                    ! w.r.t. the topmost fault trace, along the base strike normal
-                    dev = 1.0/tan(theta)*(i - 1.0)
+                    ! The lateral deviation of the fault surface at this depth
+                    dev = devs(i)
                     if (i == 1) then
                         dev_prev = dev
                     end if
                     ddev = dev - dev_prev
 
-                    !$omp parallel do private(j, k, x0, y0, u0, v0, iu, wu, dp, gc, theta_loc, sl, vdist, vdist_prev, yn_mark, alpha) collapse(2)
+                    !$omp parallel do private(j, k, x0, y0, u0, v0, iu, wu, dp, gc, theta_loc, sl, nw, vdist, vdist_prev, yn_mark, alpha) collapse(2)
                     do k = 1, n3
                         do j = 1, n2
 
@@ -1594,19 +1680,25 @@ contains
                                 yn_mark = yn_mark .and. abs(disp(fi))*alpha >= 0.5
                             end if
 
-                            if (yn_mark) then
-                                ! Wrap the local strike angle into [0, pi)
+                            if (yn_mark .and. .not. yn_mesh) then
+                                ! Wrap the local strike angle into [0, pi). A strike beyond
+                                ! this range by an odd number of half turns points the
+                                ! opposite way along the same line; the same fault then has
+                                ! the dip pi - dip and the rake pi - rake, since the dip side
+                                ! and the rake are measured relative to the strike direction
                                 sl = strike(fi) + dp
-                                if (sl < 0) then
-                                    sl = sl + const_pi
-                                else if (sl >= const_pi) then
-                                    sl = sl - const_pi
-                                end if
+                                nw = floor(sl/const_pi)
+                                sl = sl - nw*const_pi
                                 f(i, j, k) = fi
                                 cf(i, j, k) = 1.0
-                                fdip(i, j, k) = theta_loc
+                                if (mod(nw, 2) == 0) then
+                                    fdip(i, j, k) = theta_loc
+                                    frake(i, j, k) = rake(fi)
+                                else
+                                    fdip(i, j, k) = const_pi - theta_loc
+                                    frake(i, j, k) = const_pi - rake(fi)
+                                end if
                                 fstrike(i, j, k) = sl
-                                frake(i, j, k) = rake(fi)
                                 ! Store the local displacement, positive for a normal
                                 ! fault and negative for a reverse fault
                                 fdisp(i, j, k) = disp(fi)*alpha
@@ -1652,13 +1744,6 @@ contains
                 s1 = -s1
                 s2c = -s2c
                 s3c = -s3c
-
-                ! Lateral deviations of the fault surface at all depths, for
-                ! computing the distance to the fault when yn_disp_decay = .true.
-                devs = zeros(n1)
-                do i = 1, n1
-                    devs(i) = 1.0/tan(dips(i, fi))*(i - 1.0)
-                end do
 
                 !$omp parallel do private(i, j, k, x0, y0, u0, v0, iu, wu, dp, gc, vdist, alpha, dloc, s2, s3, newi, newj, newk, ia, ja, ka, wa, wb, wc) collapse(3)
                 do k = 1, n3
@@ -1797,7 +1882,37 @@ contains
                 end do
                 !$omp end parallel do
 
+                ! Carry the labels as meshes of points: move the meshes of the
+                ! older faults with the rocks, then add the mesh of this fault
+                if (yn_mesh) then
+                    rf%xc = xc
+                    rf%yc = yc
+                    rf%strike = strike(fi)
+                    rf%dip = dip(fi)
+                    rf%rake = rake(fi)
+                    rf%disp = disp(fi)
+                    rf%umin = umin
+                    rf%dphi = dphi
+                    rf%gcurve = gcurve
+                    rf%devs = devs
+                    rf%pos = dips(:, fi) < const_pi_half
+                    rf%yn_patch = this%yn_vary_disp
+                    rf%yn_decay = this%yn_disp_decay
+                    rf%uc = disp_uc(fi)
+                    rf%au = disp_au(fi)
+                    rf%zc = disp_zc(fi)
+                    rf%az = disp_az(fi)
+                    rf%wd = decay_w(fi)
+                    call mesh_shift_3d(pm, rf)
+                    call mesh_fault_3d(pm, rf, fi, n2, n3)
+                end if
+
             end do
+
+            ! The labels of all the faults, from their meshes of points
+            if (yn_mesh) then
+                call mesh_label_3d(pm, fwidth, f, fdip, fstrike, frake, fdisp)
+            end if
 
         end if
 
@@ -2200,6 +2315,7 @@ contains
             if (i <= this%unconf) then
                 g(i)%nf = 0
                 g(i)%nthrust = 0
+                g(i)%nflower = 0
                 g(i)%lwv = abs(g(i)%lwv/2.0)
                 g(i)%lwh = abs(g(i)%lwh/2.0)
                 g(i)%refl_height = g(i)%unconf_refl_height

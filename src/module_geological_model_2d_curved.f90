@@ -46,6 +46,8 @@ module geological_model_2d_curved
     use geological_model_utility
     use geological_model_realism
     use geological_model_thrust
+    use geological_model_label
+    use geological_model_flower
     use geological_model_meander
     use geological_model_drainage
     use geological_model_karst
@@ -144,6 +146,30 @@ module geological_model_2d_curved
         character(len=12) :: thrust_sequence = 'forward'
         !> Transport direction of the thrusts: 'right' (toward +x2), 'left' or 'random'
         character(len=12) :: thrust_vergence = 'random'
+        !> Flower-like branched fault systems (flowers, for short), younger than
+        !> the thrusts and older than the faults: closely aligned listric faults
+        !> with their bottoms chopped out, in two sets that lean apart above a
+        !> steep master fault. Number of flowers; type ('negative' = normal
+        !> faults, 'positive' = reverse faults, 'hybrid' = reverse master fault
+        !> and first branches with normal faults between them, 'random' =
+        !> negative or positive); ranges of the master-fault dip (degrees), of the
+        !> split depth (relative to n1), of the branch dip at the top (degrees),
+        !> of the dip decrease of a branch over the model depth (degrees) and of
+        !> the displacement ([0, 0] = [0.02, 0.05]*n1); range of the displacement
+        !> of the master fault relative to it; range of the number of branches in
+        !> each set; ranges of the spacing of the branches and of the width of
+        !> the displacement decay away from each fault (relative to n1)
+        integer :: nflower = 0
+        character(len=12) :: flower_type = 'random'
+        real, dimension(1:2) :: flower_dip = [84.0, 90.0]
+        real, dimension(1:2) :: flower_z = [0.55, 0.75]
+        real, dimension(1:2) :: flower_branch_dip = [72.0, 84.0]
+        real, dimension(1:2) :: flower_delta_dip = [25.0, 40.0]
+        real, dimension(1:2) :: flower_disp = [0.0, 0.0]
+        real, dimension(1:2) :: flower_master_disp = [1.0, 1.0]
+        integer, dimension(1:2) :: flower_nbranch = [2, 4]
+        real, dimension(1:2) :: flower_spacing = [0.08, 0.14]
+        real, dimension(1:2) :: flower_decay_width = [0.1, 0.3]
         !> sigmas of Gaussian filter for smoothing the generated noise
         real, dimension(1:2) :: noise_smooth = [1.0, 1.0]
         !> Level of noise in terms of max(abs(noise))/max(abs(image))
@@ -831,7 +857,7 @@ contains
 
         logical :: yn_aux, yn_rgt_user, yn_fault_user
 
-        if (this%nf == 0 .and. this%nthrust == 0) then
+        if (this%nf == 0 .and. this%nthrust == 0 .and. this%nflower == 0) then
             this%yn_fault = .false.
         end if
 
@@ -839,12 +865,12 @@ contains
         ! and thrust faults and the layer Vp/Vs ratios of elastic models need the RGT;
         ! compute them internally and release them afterwards if not requested
         yn_aux = this%yn_dip_independent .or. (this%noise_level /= 0 .and. this%noise_type == 'migration') &
-            .or. this%nthrust > 0 .or. this%yn_elastic
+            .or. this%nthrust > 0 .or. this%nflower > 0 .or. this%yn_elastic
         yn_rgt_user = this%yn_rgt
         yn_fault_user = this%yn_fault
         if (yn_aux) then
             this%yn_rgt = .true.
-            if (this%nf > 0 .or. this%nthrust > 0) then
+            if (this%nf > 0 .or. this%nthrust > 0 .or. this%nflower > 0) then
                 this%yn_fault = .true.
             end if
         end if
@@ -902,7 +928,10 @@ contains
         real, allocatable, dimension(:) :: rfc
         real :: m1, m2, m3
         type(thrust_fault), allocatable, dimension(:) :: th
-        integer :: pe1, pe2
+        type(flower), allocatable, dimension(:) :: fw
+        type(fault_chain) :: pc
+        integer :: pe1, pe2, nff
+        logical :: yn_chain
         real :: tv
 
         fwidth = this%fwidth
@@ -962,6 +991,8 @@ contains
         end if
 
         ! Thrust faults and their transport directions
+        pe1 = 0
+        pe2 = 0
         if (this%nthrust > 0) then
             th = thrust_system(this%nthrust, this%n1, real(this%n2), this%seed, this%thrust_dip, this%thrust_disp, &
                 this%thrust_z, this%thrust_tip_z, this%thrust_bend, this%thrust_widen, this%thrust_ps, &
@@ -979,6 +1010,14 @@ contains
             end do
             call thrust_padding(th, pe1, pe2)
         end if
+        ! Each fault of a flower shifts its hanging wall by at most its displacement
+        if (this%nflower > 0) then
+            nff = this%nflower*2*max(maxval(this%flower_nbranch), 1)
+            pe1 = pe1 + ceiling((nff + this%nflower*max(maxval(this%flower_master_disp) - 1.0, 0.0)) &
+                *merge(0.05*this%n1, maxval(abs(this%flower_disp)), maxval(abs(this%flower_disp)) == 0)) + 2
+            pe2 = pe2 + ceiling(0.7*(nff + this%nflower*max(maxval(this%flower_master_disp) - 1.0, 0.0)) &
+                *merge(0.05*this%n1, maxval(abs(this%flower_disp)), maxval(abs(this%flower_disp)) == 0)) + 2
+        end if
 
         ! Compute the number of padding grid points
         sumdisp = disp*sin(dip)
@@ -986,14 +1025,14 @@ contains
         m2 = max(abs(this%refl_slope), abs(this%refl_slope_top))
         m3 = max(maxval(abs(this%refl_height)), maxval(abs(this%refl_height_top)))
         ne1 = ceiling(max(m1, m2) + m3)
-        if (this%nthrust > 0) then
+        if (this%nthrust > 0 .or. this%nflower > 0) then
             ne1 = ne1 + pe1
         end if
         n1 = n1 + 2*ne1
 
         sumdisp = disp*cos(dip)
         ne2 = ceiling(max(sum(sumdisp, mask=sumdisp > 0), -sum(sumdisp, mask=sumdisp < 0)))
-        if (this%nthrust > 0) then
+        if (this%nthrust > 0 .or. this%nflower > 0) then
             ne2 = ne2 + pe2
         end if
         n2 = n2 + 2*ne2
@@ -1285,9 +1324,38 @@ contains
             tt = zeros(n1, n2)
         end if
 
-        ! Add thrust faults, which are older than the faults
+        ! The flowers and the faults with a displacement that varies in space
+        ! (yn_vary_disp, yn_disp_decay) move the rocks non-rigidly, and labels
+        ! moved from grid point to grid point then become irregular in width.
+        ! The labels of all the faults that they move are therefore carried as
+        ! chains of points and marked after them. The faults with the default
+        ! rigid displacement shift the older labels by whole grid points, which
+        ! keeps them intact
+        yn_chain = nf >= 1 .and. (this%yn_vary_disp .or. this%yn_disp_decay)
+
+        ! Add thrust faults and flower-like branched fault systems (flowers),
+        ! which are older than the faults. With flowers or chains, the thrusts
+        ! are carried as chains too, in place of the labels that
+        ! thrust_apply_2d marks
         if (this%nthrust > 0) then
-            call thrust_apply_2d(th, ne1, fwidth, nf, w, t, m, f, fdip, fdisp, this%yn_facies)
+            if (this%nflower > 0 .or. yn_chain) then
+                call thrust_apply_2d(th, ne1, fwidth, nf, w, t, m, f, fdip, fdisp, this%yn_facies, pc)
+                f = 0.0
+                fdip = 0.0
+                fdisp = 0.0
+            else
+                call thrust_apply_2d(th, ne1, fwidth, nf, w, t, m, f, fdip, fdisp, this%yn_facies)
+            end if
+        end if
+        if (this%nflower > 0) then
+            fw = flower_draw_2d(this%nflower, n1, ne1, ne2, this%n1, this%n2, this%seed, this%flower_dip, &
+                this%flower_z, this%flower_nbranch, this%flower_branch_dip, this%flower_delta_dip, this%flower_disp, &
+                this%flower_master_disp, this%flower_spacing, this%flower_decay_width, this%flower_type)
+            call flower_apply_2d(fw, nf + this%nthrust, 0.1*this%n1, w, t, m, pc, this%yn_facies)
+            ! The labels of the thrusts and the flowers, before rigid faults
+            if (.not. yn_chain) then
+                call chain_label_2d(pc, fwidth, f, fdip, fdisp)
+            end if
         end if
 
         if (nf >= 1) then
@@ -1367,7 +1435,7 @@ contains
                         yn_mark = .true.
                     end if
 
-                    if (yn_mark) then
+                    if (yn_mark .and. .not. yn_chain) then
 
                         !$omp parallel do private(j, x0, dist)
                         do j = 1, n2
@@ -1525,7 +1593,22 @@ contains
                 end do
                 !$omp end parallel do
 
+                ! Carry the labels as chains of points: move the points of the
+                ! older faults with the rocks, then add the points of this fault
+                ! along its trace, where its offset is visible
+                if (yn_chain) then
+                    call chain_append(pc, [real ::], [real ::], [real ::], [integer ::], [integer ::])
+                    call chain_shift_2d(pc, bs, dips(:, fi) < const_pi_half, disp(fi), dip(fi), &
+                        this%yn_vary_disp, disp_zc(fi), disp_az(fi), this%yn_disp_decay, decay_w(fi))
+                    call chain_fault_2d(pc, bs, fi, disp(fi), this%yn_vary_disp, disp_zc(fi), disp_az(fi))
+                end if
+
             end do
+
+            ! The labels of all the faults, from their chains of points
+            if (yn_chain) then
+                call chain_label_2d(pc, fwidth, f, fdip, fdisp)
+            end if
 
         end if
 
@@ -1885,6 +1968,7 @@ contains
             if (i <= this%unconf) then
                 g(i)%nf = 0
                 g(i)%nthrust = 0
+                g(i)%nflower = 0
                 g(i)%lwv = abs(g(i)%lwv/2.0)
                 g(i)%lwh = abs(g(i)%lwh/2.0)
                 g(i)%refl_height = g(i)%unconf_refl_height

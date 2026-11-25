@@ -38,7 +38,7 @@ skip = {'refl', 'refl_top', 'psf', 'image', 'rgt', 'facies', 'fault',
 def parse_type(src, type_name):
     """Extract (name, kind) parameter list from a derived type definition.
     kind is one of: real, int, logical, string, real1 (fixed or allocatable
-    1D real array)."""
+    1D real array), int1 (fixed 1D integer array)."""
     m = re.search(r'type %s\n(.*?)\n    contains' % type_name, src, re.S)
     body = m.group(1)
     params = []
@@ -62,8 +62,10 @@ def parse_type(src, type_name):
                 params.append((name, 'string'))
             elif ftype == 'logical':
                 params.append((name, 'logical'))
-            elif ftype == 'integer':
+            elif ftype == 'integer' and dims is None:
                 params.append((name, 'int'))
+            elif ftype == 'integer':
+                params.append((name, 'int1'))
             elif ftype == 'real' and dims is None and 'allocatable' not in line:
                 params.append((name, 'real'))
             elif ftype == 'real':
@@ -76,7 +78,8 @@ def set_cases(params, var):
     for name, kind in params:
         if kind == 'real':
             out.append(f"            case ('{name}')\n                {var}%{name} = real(val)")
-        elif kind == 'int':
+        elif kind in ('int', 'int1'):
+            # A scalar fills an integer array (a range with equal ends)
             out.append(f"            case ('{name}')\n                {var}%{name} = nint(val)")
         elif kind == 'logical':
             out.append(f"            case ('{name}')\n                {var}%{name} = nint(val) /= 0")
@@ -88,6 +91,8 @@ def set_array_cases(params, var):
     for name, kind in params:
         if kind == 'real1':
             out.append(f"            case ('{name}')\n                {var}%{name} = real(vals)")
+        elif kind == 'int1':
+            out.append(f"            case ('{name}')\n                {var}%{name} = nint(vals)")
     return '\n'.join(out)
 
 

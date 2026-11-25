@@ -41,6 +41,7 @@ module geological_model_thrust
     use libflit
     use geological_model_utility
     use geological_model_realism
+    use geological_model_label
 
     implicit none
 
@@ -971,6 +972,87 @@ contains
     end subroutine thrust_backward
 
     !
+    !> Position (x, z) after the thrust of the point (x0, z0) of section is:
+    !> the inverse of thrust_backward. A hanging-wall point behind the initial
+    !> tip moves along its flow line by the whole slip. A point ahead of the
+    !> initial tip moves with the tip velocity until the tip passes it, and
+    !> then along its flow line by the rest of the slip if it is in the hanging
+    !> wall. A point on the fault (less than tol into the hanging wall) or in
+    !> the footwall stays.
+    !
+    pure subroutine thrust_forward(t, is, x0, z0, tol, x, z)
+
+        type(thrust_fault), intent(in) :: t
+        integer, intent(in) :: is
+        real, intent(in) :: x0, z0, tol
+        real, intent(out) :: x, z
+
+        real :: s, sl, ds, g, d, w, ltip, gtip, vx, vz, xm, zm, xt, zt
+        integer :: k
+
+        x = x0
+        z = z0
+        sl = t%sl(is)
+        if (sl <= 0) then
+            return
+        end if
+
+        g = x - t%ta*z
+        if (g < t%gl0(is)) then
+            call flow_coord(t, is, x, z, g, d, k, w)
+            if (d >= tol) then
+                call flow_move(t, is, g, d, k, w, -sl, x, z)
+            end if
+            return
+        end if
+
+        s = 0.0
+        do while (s < sl)
+            ltip = t%l0(is) + t%pse(is)*s
+            gtip = lin(t%gu(:, is), 0.0, t%du, ltip)
+            g = x - t%ta*z
+            if (g < gtip) then
+                ! The tip has passed the point
+                call flow_coord(t, is, x, z, g, d, k, w)
+                if (d >= tol) then
+                    call flow_move(t, is, g, d, k, w, -(sl - s), x, z)
+                end if
+                return
+            end if
+            ! Ahead of the tip: a midpoint step with the tip velocity
+            zt = lin(t%z0(:, is), t%g0, t%dg, gtip)
+            xt = gtip + t%ta*zt
+            ds = min(sl - s, max(t%ds, min(0.15*sqrt((x - xt)**2 + (z - zt)**2), 8.0*t%ds)))
+            call tip_velocity(t, is, x, z, ltip, vx, vz)
+            xm = x + 0.5*ds*vx
+            zm = z + 0.5*ds*vz
+            call tip_velocity(t, is, xm, zm, t%l0(is) + t%pse(is)*(s + 0.5*ds), vx, vz)
+            x = x + ds*vx
+            z = z + ds*vz
+            s = s + ds
+        end do
+
+    end subroutine thrust_forward
+
+    !
+    !> Point (x, z) on the fault path of section is at the arc length u
+    !
+    pure subroutine path_point(t, is, u, x, z)
+
+        type(thrust_fault), intent(in) :: t
+        integer, intent(in) :: is
+        real, intent(in) :: u
+        real, intent(out) :: x, z
+
+        real :: g
+
+        g = lin(t%gu(:, is), 0.0, t%du, u)
+        z = lin(t%z0(:, is), t%g0, t%dg, g)
+        x = g + t%ta*z
+
+    end subroutine path_point
+
+    !
     !> Arc length of the foot, perpendicular distance to the fault and local
     !> dip at the point (x, z) of section is, in the post-thrust frame
     !
@@ -1413,8 +1495,16 @@ contains
     !> The thrusts are applied in the order of the array (older first); ne1 is
     !> the padding above the model, to which the depths of the thrusts refer;
     !> th(:)%azimuth is 0 for transport toward +x2 and pi toward -x2.
+    !>
+    !> With pc, the thrusts are also added to pc as chains of points (see
+    !> geological_model_label), for a model whose younger faults move the rocks
+    !> non-rigidly: each thrust adds points along its fault where its offset is
+    !> visible, and each younger thrust moves the points of the older thrusts
+    !> forward with its kinematics, as it moves the rocks. The caller carries
+    !> the chains through the younger faults and marks the labels from them
+    !> (chain_label_2d), in place of the labels marked here.
     !
-    subroutine thrust_apply_2d(th, ne1, fwidth, nf, w, t, m, f, fdip, fdisp, yn_facies)
+    subroutine thrust_apply_2d(th, ne1, fwidth, nf, w, t, m, f, fdip, fdisp, yn_facies, pc)
 
         type(thrust_fault), dimension(:), intent(inout) :: th
         integer, intent(in) :: ne1, nf
@@ -1422,17 +1512,28 @@ contains
         real, dimension(:, :), intent(inout) :: w, t, f, fdip, fdisp
         real, allocatable, dimension(:, :), intent(inout) :: m
         logical, intent(in) :: yn_facies
+        type(fault_chain), intent(inout), optional :: pc
 
         real, allocatable, dimension(:, :) :: ww, tt, mm, ff, ffdip, ffdisp, phi, pp
         real, allocatable, dimension(:) :: xh, hdec, hroof, cdec, croof, xa, za, xb, zb, sep
+        real, allocatable, dimension(:) :: px, pz, pd, qx, qz, qd
+        integer, allocatable, dimension(:) :: pid, pch, qid, qch
         real :: c2, dir, tau_dec, tau_roof, xi, z, xs, zs, u, dperp, dip, dtdz, x
         real :: xsa, zsa, xsb, zsb, xq, zq, idv, dband
-        integer :: n1, n2, k, i, j, nh, nn, u1, u2
-        logical :: yn_dec_flat
+        integer :: n1, n2, k, i, j, nh, nn, u1, u2, np, nq, nchain
+        logical :: yn_dec_flat, vis, prev
+        ! Chains: a point within the distance tol of a younger thrust stays on
+        ! it, and the points along a thrust are dp apart (grid points)
+        real, parameter :: tol = 0.35, dp = 0.5
 
         n1 = size(w, 1)
         n2 = size(w, 2)
         c2 = 0.5*(n2 - 1.0)
+        np = 0
+        nchain = 0
+        if (present(pc)) then
+            allocate (px(1:0), pz(1:0), pd(1:0), pid(1:0), pch(1:0))
+        end if
 
         ! Half width of the band over which a fault travels as fields
         dband = 0.5*fwidth + 2.0
@@ -1551,10 +1652,64 @@ contains
             end do
             !$omp end parallel do
 
+            if (present(pc)) then
+
+                ! Move the points of the older thrusts forward with the rocks
+                if (th(k)%sl(1) > 0) then
+                    !$omp parallel do private(i, xi, xq, zq)
+                    do i = 1, np
+                        xi = dir*(px(i) - c2)
+                        call thrust_forward(th(k), 1, xi, pz(i), tol, xq, zq)
+                        px(i) = c2 + dir*xq
+                        pz(i) = zq
+                    end do
+                    !$omp end parallel do
+                end if
+
+                ! The points of this thrust from the start of its path to its
+                ! final tip, where its offset is visible; each visible run is a
+                ! chain
+                if (th(k)%sl(1) >= 0.5) then
+                    nq = max(floor(th(k)%lf(1)/dp), 0) + 1
+                    allocate (qx(1:nq), qz(1:nq), qd(1:nq), qid(1:nq), qch(1:nq))
+                    j = 0
+                    prev = .false.
+                    do i = 1, nq
+                        u = (i - 1)*dp
+                        vis = lin(th(k)%sep(:, 1), 0.0, th(k)%dsep, u) >= 0.5
+                        if (vis) then
+                            if (.not. prev) then
+                                nchain = nchain + 1
+                            end if
+                            j = j + 1
+                            call path_point(th(k), 1, u, xq, zq)
+                            qx(j) = c2 + dir*xq
+                            qz(j) = zq
+                            qd(j) = -th(k)%sl(1)
+                            qid(j) = nf + k
+                            qch(j) = nchain
+                        end if
+                        prev = vis
+                    end do
+                    px = [px, qx(1:j)]
+                    pz = [pz, qz(1:j)]
+                    pd = [pd, qd(1:j)]
+                    pid = [pid, qid(1:j)]
+                    pch = [pch, qch(1:j)]
+                    np = np + j
+                    deallocate (qx, qz, qd, qid, qch)
+                end if
+
+            end if
+
         end do
 
         ! The labels: within half the fault width of the faults
         call thrust_rasterize_2d(phi, f, fdip, fdisp, nf, fwidth)
+
+        if (present(pc)) then
+            call chain_append(pc, px, pz, pd, pid, pch)
+        end if
 
     end subroutine thrust_apply_2d
 
@@ -1563,8 +1718,13 @@ contains
     !> thrust is computed in vertical sections along its transport azimuth,
     !> spaced by 2 grid points along strike, and a point takes the linear blend
     !> of the two nearest sections. th(:)%azimuth must be set.
+    !>
+    !> With pm, the thrusts are also added to pm as meshes of points (see
+    !> geological_model_label), as the chains of thrust_apply_2d; the caller
+    !> carries the meshes through the younger faults and marks the labels from
+    !> them (mesh_label_3d), in place of the labels marked here.
     !
-    subroutine thrust_apply_3d(th, ne1, fwidth, nf, w, t, m, f, fdip, fstrike, frake, fdisp, yn_facies)
+    subroutine thrust_apply_3d(th, ne1, fwidth, nf, w, t, m, f, fdip, fstrike, frake, fdisp, yn_facies, pm)
 
         type(thrust_fault), dimension(:), intent(inout) :: th
         integer, intent(in) :: ne1, nf
@@ -1572,21 +1732,37 @@ contains
         real, dimension(:, :, :), intent(inout) :: w, t, f, fdip, fstrike, frake, fdisp
         real, allocatable, dimension(:, :, :), intent(inout) :: m
         logical, intent(in) :: yn_facies
+        type(fault_mesh), intent(inout), optional :: pm
 
         real, allocatable, dimension(:, :, :) :: ww, tt, mm, ff, ffdip, ffstrike, ffrake, ffdisp, phi, pp
         real, allocatable, dimension(:, :) :: cdec, croof
         real, allocatable, dimension(:) :: xh, hdec, hroof, xa, za, xb, zb, dphi
+        real, allocatable, dimension(:) :: px2, px3, pz, pd
+        logical, allocatable, dimension(:) :: pv
+        integer, allocatable, dimension(:) :: moff, mns, mnu, mid
         real :: c2, c3, cp, sp, tau_dec, tau_roof, xi, eta, z, xs, zs, xs2, zs2, e, ws
         real :: u, dperp, dip, u2, dperp2, dip2, sepv, dtdz, emin, emax, xmax_, x2, x3, slip, taper
-        real :: xsa, zsa, xsb, zsb, sl, dl, beta, tdip, idv, dband
-        integer :: n1, n2, n3, k, i, j, l, is, nh, nn, isec, i0, m1, m2
+        real :: xsa, zsa, xsb, zsb, sl, dl, beta, tdip, idv, dband, xq, zq, g, gm0, gm1
+        integer :: n1, n2, n3, k, i, j, l, is, nh, nn, isec, i0, m1, m2, np, nm, nu
         logical :: yn_dec_flat
+        ! Meshes: a point within the distance tol of a younger thrust stays on
+        ! it, and the points along a thrust are dp apart (grid points)
+        real, parameter :: tol = 0.35, dp = 1.0
 
         n1 = size(w, 1)
         n2 = size(w, 2)
         n3 = size(w, 3)
         c2 = 0.5*(n2 - 1.0)
         c3 = 0.5*(n3 - 1.0)
+
+        ! The fault meshes: one per thrust, with its offset in the point arrays,
+        ! its numbers of sections and of points per section, and its label
+        np = 0
+        nm = 0
+        if (present(pm)) then
+            allocate (px2(1:0), px3(1:0), pz(1:0), pd(1:0), pv(1:0))
+            allocate (moff(1:size(th)), mns(1:size(th)), mnu(1:size(th)), mid(1:size(th)))
+        end if
 
         ! Half width of the band over which a fault travels as fields
         dband = 0.5*fwidth + 2.0
@@ -1781,10 +1957,96 @@ contains
             end do
             !$omp end parallel do
 
+            if (present(pm)) then
+
+                ! Move the mesh points of the older thrusts forward with the
+                ! rocks, with the blend of the two nearest sections
+                !$omp parallel do private(i, xi, eta, e, is, ws, xs, zs, xs2, zs2)
+                do i = 1, np
+                    if (.not. pv(i)) then
+                        cycle
+                    end if
+                    xi = (px2(i) - c2)*cp + (px3(i) - c3)*sp
+                    eta = -(px2(i) - c2)*sp + (px3(i) - c3)*cp
+                    e = (eta - th(k)%eta0)/th(k)%deta
+                    is = min(max(int(e) + 1, 1), th(k)%nsec - 1)
+                    ws = min(max(e - (is - 1), 0.0), 1.0)
+                    call thrust_forward(th(k), is, xi, pz(i), tol, xs, zs)
+                    call thrust_forward(th(k), is + 1, xi, pz(i), tol, xs2, zs2)
+                    xs = (1.0 - ws)*xs + ws*xs2
+                    pz(i) = (1.0 - ws)*zs + ws*zs2
+                    px2(i) = c2 + xs*cp - eta*sp
+                    px3(i) = c3 + xs*sp + eta*cp
+                end do
+                !$omp end parallel do
+
+                ! The mesh of this thrust: in each section, points along the
+                ! fault at the common positions g = gm0 + (i - 1)*dp of the shear
+                ! frame (so that the points of neighboring sections face each
+                ! other), valid from the start of the path to the final tip
+                ! where the offset is visible
+                gm0 = float_huge
+                gm1 = -float_huge
+                do is = 1, isec
+                    gm0 = min(gm0, th(k)%gu(1, is))
+                    gm1 = max(gm1, lin(th(k)%gu(:, is), 0.0, th(k)%du, th(k)%lf(is)))
+                end do
+                nu = max(ceiling((gm1 - gm0)/dp) + 1, 1)
+                nm = nm + 1
+                moff(nm) = np
+                mns(nm) = isec
+                mnu(nm) = nu
+                mid(nm) = nf + k
+                px2 = [px2, zeros(isec*nu)]
+                px3 = [px3, zeros(isec*nu)]
+                pz = [pz, zeros(isec*nu)]
+                pd = [pd, zeros(isec*nu)]
+                pv = [pv, (.false., i = 1, isec*nu)]
+                !$omp parallel do private(is, eta, i, u, xq, zq, j, g)
+                do is = 1, isec
+                    eta = th(k)%eta0 + (is - 1)*th(k)%deta
+                    if (th(k)%sl(is) < 0.5) then
+                        cycle
+                    end if
+                    do i = 1, nu
+                        g = gm0 + (i - 1)*dp
+                        u = lin(th(k)%ut(:, is), th(k)%g0, th(k)%dg, g)
+                        if (u > th(k)%lf(is)) then
+                            cycle
+                        end if
+                        if (lin(th(k)%sep(:, is), 0.0, th(k)%dsep, u) < 0.5) then
+                            cycle
+                        end if
+                        j = np + (is - 1)*nu + i
+                        zq = lin(th(k)%z0(:, is), th(k)%g0, th(k)%dg, g)
+                        xq = g + th(k)%ta*zq
+                        px2(j) = c2 + xq*cp - eta*sp
+                        px3(j) = c3 + xq*sp + eta*cp
+                        pz(j) = zq
+                        pd(j) = -th(k)%sl(is)
+                        pv(j) = .true.
+                    end do
+                end do
+                !$omp end parallel do
+                np = np + isec*nu
+
+            end if
+
         end do
 
         ! The labels: within half the fault width of the faults
         call thrust_rasterize_3d(phi, f, fdip, fstrike, frake, fdisp, nf, fwidth)
+
+        ! Hand the meshes over; a thrust has a rake of pi/2, and its sections
+        ! are 2 grid points apart
+        if (present(pm)) then
+            do i = 1, nm
+                j = moff(i)
+                l = mns(i)*mnu(i)
+                call mesh_append(pm, px2(j + 1:j + l), px3(j + 1:j + l), pz(j + 1:j + l), pd(j + 1:j + l), &
+                    pv(j + 1:j + l), mns(i), mnu(i), mid(i), real(0.5*const_pi), 0.0, dp, 2.0)
+            end do
+        end if
 
     end subroutine thrust_apply_3d
 

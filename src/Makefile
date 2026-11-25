@@ -26,7 +26,9 @@ moddir = $(PWD)/../lib
 common = \
     module_geological_model_utility.o \
     module_geological_model_realism.o \
+    module_geological_model_label.o \
     module_geological_model_thrust.o \
+    module_geological_model_flower.o \
     module_geological_model_2d.o \
     module_geological_model_3d.o \
     module_geological_model_meander.o \
