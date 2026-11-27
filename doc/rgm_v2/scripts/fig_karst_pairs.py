@@ -18,7 +18,7 @@ exdir = '../tmp'
 outdir = '../tmp'
 os.makedirs(outdir, exist_ok=True)
 
-clip = 0.06   # symmetric amplitude clip for the seismic images
+clip = 0.024  # symmetric amplitude clip for the seismic images, about 1.3 times the standard deviation of the 3D image
 
 # ---------------------------------------------------------------- 3D pair
 n1, n2, n3 = 151, 201, 251
@@ -30,7 +30,7 @@ os.system(f'x_showslice -in {exdir}/example_3d_vp_karst_1_151x201x251.bin '
           f'-out {outdir}/karst3d_vp.png >/dev/null 2>&1')
 os.system(f'x_showslice -in {exdir}/example_3d_image_karst_1_151x201x251.bin '
           f'{common} -color binary -legend 1 -unit "Amplitude" '
-          f'-cmin {-clip:.6f} -cmax {clip:.6f} '
+          f'-cmin {-clip:.6f} -cmax {clip:.6f} -ld 0.01 -ltickbeg -0.02 -ltickend 0.02 '
           f'-out {outdir}/karst3d_img.png >/dev/null 2>&1')
 
 fig, axes = plt.subplots(2, 1, figsize=(9.0, 12.6))

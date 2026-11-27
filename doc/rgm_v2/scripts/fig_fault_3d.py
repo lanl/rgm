@@ -8,10 +8,21 @@
 #
 import numpy as np
 import pyvista as pv
+import vtk
+from matplotlib import font_manager
 from scipy.ndimage import distance_transform_edt
 
 pv.OFF_SCREEN = True
 pv.global_theme.font.family = 'arial'
+
+# The Arial font files for all the text (the built-in 'arial' of VTK is a
+# different font)
+arial = font_manager.findfont(font_manager.FontProperties(family='Arial'))
+arial_bold = font_manager.findfont(font_manager.FontProperties(family='Arial', weight='bold'))
+
+def use_arial(prop):
+    prop.SetFontFamily(vtk.VTK_FONT_FILE)
+    prop.SetFontFile(arial_bold if prop.GetBold() else arial)
 
 n1, n2, n3 = 171, 251, 251
 
@@ -36,7 +47,8 @@ def fault_surface(fid, attr):
     return surf.smooth(n_iter=20)
 
 surf_a = fault_surface(load('fault_vstrike'), load('fstrike_vstrike'))
-surf_b = fault_surface(load('fault_vdisp'), load('fdisp_vdisp'))
+# The displacement magnitude: fault_disp is negative for reverse faults
+surf_b = fault_surface(load('fault_vdisp'), np.abs(load('fdisp_vdisp')))
 
 # focal shifted along the screen-right direction so the scene sits left
 # of the scalar bar
@@ -62,14 +74,21 @@ for i, (surf, title, btitle, clim) in enumerate(
                                     width=0.045, title_font_size=30,
                                     label_font_size=26, fmt='%.0f',
                                     n_labels=5 if i == 0 else 6))
-    p.add_text(title, font_size=20, color='black', position='upper_left')
-    p.show_bounds(bounds=(0, n3 - 1, 0, n2 - 1, 0, n1 - 1),
-                  xtitle='X (Grid Number)', ytitle='Y (Grid Number)',
-                  ztitle='Z (Grid Number)', color='black', font_size=22,
-                  location='outer', ticks='outside', grid=False,
-                  n_xlabels=6, n_ylabels=5, n_zlabels=4)
+    p.add_text(title, font_size=20, color='black', position='upper_left', font_file=arial)
+    axes = p.show_bounds(bounds=(0, n3 - 1, 0, n2 - 1, 0, n1 - 1),
+                         xtitle='X (Grid Number)', ytitle='Y (Grid Number)',
+                         ztitle='Z (Grid Number)', color='black', font_size=22,
+                         location='outer', ticks='outside', grid=False,
+                         n_xlabels=6, n_ylabels=5, n_zlabels=4)
+    for k in range(3):
+        use_arial(axes.GetTitleTextProperty(k))
+        use_arial(axes.GetLabelTextProperty(k))
     p.camera_position = [pos if i == 0 else pos_b, focal, (0, 0, -1)]
     p.camera.zoom(0.80)
+
+for bar in p.scalar_bars.values():
+    use_arial(bar.GetTitleTextProperty())
+    use_arial(bar.GetLabelTextProperty())
 
 p.screenshot('../fig_fault_3d.png')
 print('saved fig_fault_3d.png')

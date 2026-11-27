@@ -47,8 +47,6 @@ program gen_fault_examples
     call output_array(p%fault_strike, './example_3d_fstrike_vstrike_1.bin')
     print *, 'vstrike done'
 
-    stop
-
     ! Spatially varying displacement (elliptical slip patch); the decay
     ! case below inherits the same fault framework and seed
     p%nf = 6

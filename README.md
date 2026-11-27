@@ -90,7 +90,7 @@ The compiled executables will be in `example/bin`:
 
 Running these executables will generate the medium parameter models, seismic images, and the associated labels (fault attributes, RGT, facies, salt and karst masks) in the working directory. All the generated files will be in little-endian single-precision raw binary format, with dimensions specified in the respective codes.
 
-For the Python interface, [example/example_python.py](example/example_python.py) generates one model for each feature type, [example/example_shape_noise.py](example/example_shape_noise.py) shows reflector shapes and image noise, [example/example_fault_types.py](example/example_fault_types.py) shows the fault types, [example/example_flower.py](example/example_flower.py) shows flower-like branched fault systems, and [example/example_elastic.py](example/example_elastic.py) shows elastic models. The scripts plot with `pymplot` and save the figures in the working directory:
+For the Python interface, [example/example_python.py](example/example_python.py) generates one model for each feature type, [example/example_shape_noise.py](example/example_shape_noise.py) shows reflector shapes and image noise, [example/example_fault_types.py](example/example_fault_types.py) shows the fault types, [example/example_flower.py](example/example_flower.py) shows flower-like branched fault systems, [example/example_fault_system.py](example/example_fault_system.py) shows fault systems that combine thrusts, flower-like branched faults, and faults, and [example/example_elastic.py](example/example_elastic.py) shows elastic models. The scripts plot with `pymplot` and save the figures in the working directory:
 
 ```
 cd example
@@ -98,6 +98,7 @@ python3 example_python.py
 python3 example_shape_noise.py
 python3 example_fault_types.py
 python3 example_flower.py
+python3 example_fault_system.py
 python3 example_elastic.py
 ```
 
