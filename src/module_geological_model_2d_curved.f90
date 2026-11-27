@@ -1037,19 +1037,20 @@ contains
         end if
         n2 = n2 + 2*ne2
 
-        ! Compute the top and bottom fault dip angles
-        ! Note that to ensure the faults have proper dip angle range within the final cropped image,
-        ! here I add some extra degrees to the begin and end dip angles
+        ! The dip of each fault along depth: the dip at the top of the model,
+        ! changing linearly by delta_dip to the bottom of the model, and constant
+        ! in the padding above and below, so that the faults have the requested
+        ! range of dip within the final cropped model whatever the padding is
         dips = zeros(n1, nf)
         delta_dip = random(nf, range=this%delta_dip, seed=safe_seed((int(this%seed, 8)*5 + 1)/2))*const_deg2rad
         do i = 1, nf
             if (dip(i) <= const_pi_half) then
-                dips(:, i) = [ones(ne1)*dip(i), &
-                    linspace(dip(i), dip(i) - delta_dip(i)*(1.0 + ne1*1.0/n1), n1 - ne1)]
+                dips(:, i) = [ones(ne1)*dip(i), linspace(dip(i), dip(i) - delta_dip(i), this%n1), &
+                    ones(ne1)*(dip(i) - delta_dip(i))]
                 dips(:, i) = clip(dips(:, i), 0.0, real(const_pi_half))
             else
-                dips(:, i) = [ones(ne1)*dip(i), &
-                    linspace(dip(i), dip(i) + delta_dip(i)*(1.0 + ne1*1.0/n1), n1 - ne1)]
+                dips(:, i) = [ones(ne1)*dip(i), linspace(dip(i), dip(i) + delta_dip(i), this%n1), &
+                    ones(ne1)*(dip(i) + delta_dip(i))]
                 dips(:, i) = clip(dips(:, i), real(const_pi_half), real(const_pi))
             end if
         end do

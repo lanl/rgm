@@ -52,8 +52,6 @@ program test
 
     end block
 
-    stop
-
     ! ==================================================================
     ! Thrust faults: an imbricate fan, a duplex and a pop-up; the images are
     ! dip-independent, so that the steep fold limbs stay visible
